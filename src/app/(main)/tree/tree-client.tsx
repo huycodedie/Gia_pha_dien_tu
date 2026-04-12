@@ -462,7 +462,7 @@ export default function TreeViewPage() {
 
       const result = await insertPerson(firstPerson);
       if (result.error) {
-        console.error("Error inserting first person:", result.error);
+        alert("Lỗi: " + result.error);
         return;
       }
       const actualHandle = result.handle;

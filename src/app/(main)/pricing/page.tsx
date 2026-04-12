@@ -17,6 +17,7 @@ interface Plan {
   duration_days: number;
   is_free: boolean;
   max_uses: number | null;
+  people_limit: number;
 }
 
 interface Subscription {
@@ -185,6 +186,10 @@ export default function PricingPage() {
                   <div className="flex items-center gap-2">
                     <Clock className="h-4 w-4 text-blue-500" />
                     <span>{plan.duration_days} ngày sử dụng</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Zap className="h-4 w-4 text-orange-500" />
+                    <span>Giới hạn {plan.people_limit} thành viên</span>
                   </div>
                   {plan.is_free && plan.max_uses && (
                     <div className="flex items-center gap-2">

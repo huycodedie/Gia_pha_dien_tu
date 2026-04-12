@@ -14,6 +14,7 @@ import {
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/lib/supabase";
+import { useAuth } from "@/components/auth-provider";
 
 interface Stats {
   people: number;
@@ -25,6 +26,7 @@ interface Stats {
 }
 
 export default function HomePage() {
+  const { user, profile } = useAuth();
   const [stats, setStats] = useState<Stats>({
     people: 0,
     families: 0,
@@ -47,12 +49,27 @@ export default function HomePage() {
           "media",
         ] as const;
         const counts: Record<string, number> = {};
+        
         for (const t of tables) {
-          const { count } = await supabase
-            .from(t)
-            .select("*", { count: "exact", head: true });
+          let query = supabase.from(t).select("*", { count: "exact", head: true });
+          
+          // Apply filters for people and families based on user role
+          if ((t === "people" || t === "families") && user && profile) {
+            if (profile.role === "admin") {
+              // Admin sees all data
+            } else if (profile.role === "guest" && profile.guest_of) {
+              // Guest sees only creator's data or demo data
+              query = query.or(`owner_id.eq.${profile.guest_of},owner_id.is.null`);
+            } else {
+              // Regular user sees only their data or demo data
+              query = query.or(`owner_id.eq.${user.id},owner_id.is.null`);
+            }
+          }
+          
+          const { count } = await query;
           counts[t] = count || 0;
         }
+        
         setStats(counts as unknown as Stats);
       } catch {
         /* ignore */
@@ -61,7 +78,7 @@ export default function HomePage() {
       }
     }
     fetchStats();
-  }, []);
+  }, [user, profile]);
 
   const cards = [
     {

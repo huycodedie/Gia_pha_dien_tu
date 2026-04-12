@@ -605,6 +605,7 @@ CREATE TABLE IF NOT EXISTS plans (
     to_role TEXT NOT NULL CHECK (to_role IN ('user')),
     is_free BOOLEAN DEFAULT false,
     max_uses INTEGER, -- NULL = unlimited
+    people_limit INTEGER DEFAULT 30, -- Number of people user can add with this plan
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -815,16 +816,16 @@ CREATE TRIGGER subscription_expiry_trigger
     EXECUTE FUNCTION check_subscription_expiry();
 
 -- Insert default plans
-INSERT INTO plans (name, description, price, duration_days, from_role, to_role, is_free, max_uses) VALUES
-('Free Trial', 'Nâng cấp lên User miễn phí trong 3 ngày', 0, 3, 'viewer', 'user', true, 1),
-('Monthly Premium', 'Nâng cấp lên User trong 1 tháng', 50000, 30, 'viewer', 'user', false, NULL)
+INSERT INTO plans (name, description, price, duration_days, from_role, to_role, is_free, max_uses, people_limit) VALUES
+('Free Trial', 'Nâng cấp lên User miễn phí trong 3 ngày', 0, 3, 'viewer', 'user', true, 1, 30),
+('Monthly Premium', 'Nâng cấp lên User trong 1 tháng', 50000, 30, 'viewer', 'user', false, NULL, 150)
 ON CONFLICT DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
 -- ║  STORAGE: Posts bucket for images                       ║
 -- ╚══════════════════════════════════════════════════════════╝
-
+    
 -- Create posts storage bucket
 INSERT INTO storage.buckets (id, name, public, avif_autodetection, file_size_limit, allowed_mime_types)
 VALUES ('posts', 'posts', true, true, 5242880, '{"image/*"}')

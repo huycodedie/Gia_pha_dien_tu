@@ -7,7 +7,86 @@ import type { TreeNode, TreeFamily } from "./tree-layout";
 
 export type { TreeNode, TreeFamily };
 
-// ── Convert snake_case DB rows to camelCase ──
+// ── Helper: Get people limit based on user role and subscription ──
+
+async function getPeopleLimit(
+  userId: string,
+  role: string | undefined,
+): Promise<{ limit: number | null; error: string | null }> {
+  // Admin has no limit
+  if (role === "admin") {
+    return { limit: null, error: null };
+  }
+
+  // Guest cannot add people
+  if (role === "guest") {
+    return {
+      limit: 0,
+      error: "Tài khoản khách không thể thêm thành viên.",
+    };
+  }
+
+  // Viewer cannot add people
+  if (role === "viewer") {
+    return {
+      limit: 0,
+      error: "Bạn phải nâng cấp tài khoản để thêm thành viên.",
+    };
+  }
+
+  // User: check active subscription
+  if (role === "user") {
+    const { data: subscriptions, error: subError } = await supabase
+      .from("subscriptions")
+      .select("plan_id")
+      .eq("user_id", userId)
+      .eq("status", "active")
+      .gt("expires_at", new Date().toISOString())
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (subError) {
+      console.error("Failed to fetch subscriptions:", subError.message);
+      return {
+        limit: null,
+        error: "Không thể kiểm tra gói đăng ký của bạn.",
+      };
+    }
+
+    if (!subscriptions || subscriptions.length === 0) {
+      return {
+        limit: 0,
+        error: "Gói đăng ký của bạn đã hết hạn. Vui lòng nâng cấp lại.",
+      };
+    }
+
+    // Get plan details to determine limit (from the most recent subscription)
+    const planId = subscriptions[0].plan_id;
+    const { data: plan, error: planError } = await supabase
+      .from("plans")
+      .select("people_limit")
+      .eq("id", planId)
+      .single();
+
+    if (planError || !plan) {
+      console.error("Failed to fetch plan:", planError?.message);
+      return {
+        limit: null,
+        error: "Không thể xác định gói đăng ký của bạn.",
+      };
+    }
+
+    const limit = plan.people_limit ?? 30;
+    return { limit, error: null };
+  }
+
+  return {
+    limit: null,
+    error: "Không thể xác định quyền của bạn.",
+  };
+}
+
+// ── Read operations ──
 
 function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
   return {
@@ -147,6 +226,49 @@ export async function insertPerson(
 ): Promise<{ handle: string | null; error: string | null }> {
   const { data: user } = await supabase.auth.getUser();
   const userId = user.user?.id;
+
+  if (!userId) {
+    return {
+      handle: null,
+      error: "Bạn phải đăng nhập để thêm thành viên.",
+    };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  const role = profile?.role as string | undefined;
+
+  // Check limit
+  const { limit, error: limitError } = await getPeopleLimit(userId, role);
+  if (limitError) {
+    return { handle: null, error: limitError };
+  }
+
+  if (limit !== null && limit > 0) {
+    const { count, error: countError } = await supabase
+      .from("people")
+      .select("handle", { count: "exact", head: true })
+      .eq("owner_id", userId);
+
+    if (countError) {
+      console.error("Failed to count people:", countError.message);
+      return {
+        handle: null,
+        error: "Không thể kiểm tra giới hạn thành viên hiện tại.",
+      };
+    }
+
+    if ((count ?? 0) >= limit) {
+      return {
+        handle: null,
+        error: `Bạn đã đạt giới hạn ${limit} thành viên. Vui lòng nâng cấp để thêm nhiều hơn.`,
+      };
+    }
+  }
 
   const { data, error } = await supabase
     .from("people")
@@ -407,6 +529,52 @@ export async function addSpouse(
     currentAddress?: string;
   },
 ): Promise<{ handle: string | null; error: string | null }> {
+  const { data: user } = await supabase.auth.getUser();
+  const userId = user.user?.id;
+
+  if (!userId) {
+    return {
+      handle: null,
+      error: "Bạn phải đăng nhập để thêm thành viên.",
+    };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  const role = profile?.role as string | undefined;
+
+  // Check limit
+  const { limit, error: limitError } = await getPeopleLimit(userId, role);
+  if (limitError) {
+    return { handle: null, error: limitError };
+  }
+
+  if (limit !== null && limit > 0) {
+    const { count, error: countError } = await supabase
+      .from("people")
+      .select("handle", { count: "exact", head: true })
+      .eq("owner_id", userId);
+
+    if (countError) {
+      console.error("Failed to count people:", countError.message);
+      return {
+        handle: null,
+        error: "Không thể kiểm tra giới hạn thành viên hiện tại.",
+      };
+    }
+
+    if ((count ?? 0) >= limit) {
+      return {
+        handle: null,
+        error: `Bạn đã đạt giới hạn ${limit} thành viên. Vui lòng nâng cấp để thêm nhiều hơn.`,
+      };
+    }
+  }
+
   const { data, error } = await supabase.rpc("add_spouse", {
     p_person_handle: personHandle,
     p_spouse_name: spouse.displayName,
@@ -443,6 +611,52 @@ export async function addChild(
     currentAddress?: string;
   },
 ): Promise<{ handle: string | null; error: string | null }> {
+  const { data: user } = await supabase.auth.getUser();
+  const userId = user.user?.id;
+
+  if (!userId) {
+    return {
+      handle: null,
+      error: "Bạn phải đăng nhập để thêm thành viên.",
+    };
+  }
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", userId)
+    .single();
+
+  const role = profile?.role as string | undefined;
+
+  // Check limit
+  const { limit, error: limitError } = await getPeopleLimit(userId, role);
+  if (limitError) {
+    return { handle: null, error: limitError };
+  }
+
+  if (limit !== null && limit > 0) {
+    const { count, error: countError } = await supabase
+      .from("people")
+      .select("handle", { count: "exact", head: true })
+      .eq("owner_id", userId);
+
+    if (countError) {
+      console.error("Failed to count people:", countError.message);
+      return {
+        handle: null,
+        error: "Không thể kiểm tra giới hạn thành viên hiện tại.",
+      };
+    }
+
+    if ((count ?? 0) >= limit) {
+      return {
+        handle: null,
+        error: `Bạn đã đạt giới hạn ${limit} thành viên. Vui lòng nâng cấp để thêm nhiều hơn.`,
+      };
+    }
+  }
+
   const { data, error } = await supabase.rpc("add_child", {
     p_family_handle: familyHandle,
     p_child_name: child.displayName,
