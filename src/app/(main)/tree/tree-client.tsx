@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback, useMemo, memo } from "react";
+import { toast } from "sonner";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/components/auth-provider";
 import {
@@ -8,6 +9,7 @@ import {
   AddSpouseDialog,
   AddChildDialog,
 } from "@/components/contribute-dialog";
+
 import {
   Search,
   ZoomIn,
@@ -55,6 +57,7 @@ import {
   addChild,
   insertPerson,
   insertFamily,
+  getKinshipRelationship,
 } from "@/lib/supabase-data";
 import { supabase } from "@/lib/supabase";
 import {
@@ -295,6 +298,13 @@ export default function TreeViewPage() {
   // Editor mode state
   const [editorMode, setEditorMode] = useState(false);
   const [selectedCard, setSelectedCard] = useState<string | null>(null);
+  const [kinshipMode, setKinshipMode] = useState(false);
+  const [kinshipSelection, setKinshipSelection] = useState<
+    [string, string] | null
+  >(null);
+  const [kinshipRelationship, setKinshipRelationship] = useState<string | null>(
+    null,
+  );
   const { isAdmin, profile } = useAuth();
 
   // Check if user has their own family tree
@@ -462,7 +472,7 @@ export default function TreeViewPage() {
 
       const result = await insertPerson(firstPerson);
       if (result.error) {
-        alert("Lỗi: " + result.error);
+        toast.error("Lỗi: " + result.error);
         return;
       }
       const actualHandle = result.handle;
@@ -471,6 +481,7 @@ export default function TreeViewPage() {
       const data = await fetchTreeData();
       setTreeData(data);
       setHasOwnTree(true);
+      toast.success("Thêm người đầu tiên thành công!");
 
       // Focus on the new person
       setFocusPerson(actualHandle);
@@ -821,14 +832,42 @@ export default function TreeViewPage() {
   );
   const handleCardClick = useCallback(
     (handle: string, x: number, y: number) => {
+      if (kinshipMode) {
+        // In kinship mode, build a 2-person selection
+        if (!kinshipSelection) {
+          setKinshipSelection([handle, ""]);
+        } else if (kinshipSelection[1] === "") {
+          // Set the second person
+          if (handle === kinshipSelection[0]) {
+            // Can't select same person twice
+            return;
+          }
+          setKinshipSelection([kinshipSelection[0], handle]);
+        } else {
+          // Reset and start over
+          setKinshipSelection([handle, ""]);
+        }
+        return;
+      }
       if (editorMode) {
         setSelectedCard(handle);
         return;
       }
       setContextMenu({ handle, x, y });
     },
-    [editorMode],
+    [editorMode, kinshipMode, kinshipSelection],
   );
+
+  // Fetch kinship relationship when 2 people are selected
+  useEffect(() => {
+    if (kinshipSelection && kinshipSelection[1] !== "") {
+      const [person1, person2] = kinshipSelection;
+      getKinshipRelationship(person1, person2).then(({ relationship }) => {
+        setKinshipRelationship(relationship);
+      });
+    }
+  }, [kinshipSelection]);
+
   const handleCardFocus = useCallback((handle: string) => {
     setFocusPerson(handle);
   }, []);
@@ -1054,6 +1093,40 @@ export default function TreeViewPage() {
     }
   }, []);
 
+  const handleDeletePerson = useCallback(
+    async (handle: string) => {
+      const person = treeData?.people.find((p) => p.handle === handle);
+      if (!person) return;
+
+      try {
+        const { error } = await supabase
+          .from("people")
+          .delete()
+          .eq("handle", handle);
+
+        if (error) {
+          toast.error("Lỗi: " + error.message);
+          return;
+        }
+
+        // Remove from local state
+        setTreeData((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            people: prev.people.filter((p) => p.handle !== handle),
+          };
+        });
+
+        toast.success("Xóa người thành công!");
+      } catch (err) {
+        console.error("Failed to delete person:", err);
+        toast.error("Có lỗi xảy ra khi xóa người");
+      }
+    },
+    [treeData?.people],
+  );
+
   // Search results
   const searchResults = useMemo(() => {
     if (!searchQuery || !treeData) return [];
@@ -1237,18 +1310,46 @@ export default function TreeViewPage() {
             <div className="w-px bg-border mx-0.5" />
             {profile &&
               (profile.role === "user" || profile.role === "admin") && (
-                <Button
-                  variant={editorMode ? "default" : "outline"}
-                  size="icon"
-                  className={`h-8 w-8 ${editorMode ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}`}
-                  title={editorMode ? "Tắt chỉnh sửa" : "Chế độ chỉnh sửa"}
-                  onClick={() => {
-                    setEditorMode((m) => !m);
-                    setSelectedCard(null);
-                  }}
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
+                <>
+                  <Button
+                    variant={editorMode ? "default" : "outline"}
+                    size="icon"
+                    className={`h-8 w-8 ${editorMode ? "bg-blue-600 hover:bg-blue-700 text-white" : ""}`}
+                    title={editorMode ? "Tắt chỉnh sửa" : "Chế độ chỉnh sửa"}
+                    onClick={() => {
+                      setEditorMode((m) => !m);
+                      setSelectedCard(null);
+                      setKinshipMode(false);
+                      setKinshipSelection(null);
+                      setKinshipRelationship(null);
+                    }}
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                </>
+              )}
+
+            {profile &&
+              (profile.role === "user" ||
+                profile.role === "admin" ||
+                profile.role === "guest") && (
+                <>
+                  <Button
+                    variant={kinshipMode ? "default" : "outline"}
+                    size="icon"
+                    className={`h-8 w-8 ${kinshipMode ? "bg-purple-600 hover:bg-purple-700 text-white" : ""}`}
+                    title={
+                      kinshipMode ? "Tắt xem quan hệ" : "Xem quan hệ gia phả"
+                    }
+                    onClick={() => {
+                      setKinshipMode((m) => !m);
+                      setKinshipSelection(null);
+                      setKinshipRelationship(null);
+                    }}
+                  >
+                    <Users className="h-3.5 w-3.5" />
+                  </Button>
+                </>
               )}
           </div>
         </div>
@@ -1334,6 +1435,11 @@ export default function TreeViewPage() {
                     isFocused={focusPerson === item.node.handle}
                     isHovered={hoveredHandle === item.node.handle}
                     isSelected={editorMode && selectedCard === item.node.handle}
+                    isKinshipSelected={
+                      !!kinshipSelection &&
+                      (kinshipSelection[0] === item.node.handle ||
+                        kinshipSelection[1] === item.node.handle)
+                    }
                     zoomLevel={zoomLevel}
                     showCollapseToggle={hasChildren(item.node.handle)}
                     isCollapsed={collapsedBranches.has(item.node.handle)}
@@ -1418,6 +1524,16 @@ export default function TreeViewPage() {
                             setAddChildFamily(person.families[0]);
                           setContextMenu(null);
                         }}
+                        onDelete={() => {
+                          if (
+                            confirm(
+                              `Bạn có chắc chắn muốn xóa "${person.displayName}"? Hành động này không thể hoàn tác.`,
+                            )
+                          ) {
+                            handleDeletePerson(person.handle);
+                          }
+                          setContextMenu(null);
+                        }}
                         onClose={() => setContextMenu(null)}
                       />
                     );
@@ -1476,6 +1592,54 @@ export default function TreeViewPage() {
           {linkCopied && (
             <div className="absolute bottom-12 left-1/2 -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-lg shadow-lg text-xs font-medium flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 z-50">
               <Copy className="w-3.5 h-3.5" /> Đã sao chép link!
+            </div>
+          )}
+
+          {/* Kinship Mode Panel */}
+          {kinshipMode && (
+            <div className="absolute top-20 right-4 bg-white border-2 border-purple-300 rounded-lg shadow-lg p-3 w-64 z-40">
+              <div className="text-xs font-semibold text-purple-700 mb-2">
+                Xem Quan Hệ Gia Phả
+              </div>
+              {!kinshipSelection || kinshipSelection[1] === "" ? (
+                <div className="text-xs text-muted-foreground">
+                  {kinshipSelection
+                    ? `Chọn người thứ 2 (hiện tại: ${treeData?.people.find((p) => p.handle === kinshipSelection[0])?.displayName || kinshipSelection[0]})`
+                    : "Nhấp vào 2 người để xem mối quan hệ"}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <div className="text-xs">
+                    <span className="font-medium">
+                      {treeData?.people.find(
+                        (p) => p.handle === kinshipSelection[0],
+                      )?.displayName || kinshipSelection[0]}
+                    </span>
+                    <span className="mx-2 text-muted-foreground">→</span>
+                    <span className="font-medium">
+                      {treeData?.people.find(
+                        (p) => p.handle === kinshipSelection[1],
+                      )?.displayName || kinshipSelection[1]}
+                    </span>
+                  </div>
+                  {kinshipRelationship && (
+                    <div className="bg-purple-50 border border-purple-200 rounded p-2 text-sm font-semibold text-purple-900">
+                      {kinshipRelationship}
+                    </div>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full text-xs"
+                    onClick={() => {
+                      setKinshipSelection(null);
+                      setKinshipRelationship(null);
+                    }}
+                  >
+                    Chọn Lại
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1647,6 +1811,7 @@ function CardContextMenu({
   onContribute,
   onAddSpouse,
   onAddChild,
+  onDelete,
   onClose,
 }: {
   person: TreeNode;
@@ -1662,6 +1827,7 @@ function CardContextMenu({
   onContribute: () => void;
   onAddSpouse: () => void;
   onAddChild: () => void;
+  onDelete: () => void;
   onClose: () => void;
 }) {
   return (
@@ -1768,6 +1934,13 @@ function CardContextMenu({
             desc="Bổ sung thông tin về người này"
             onClick={onContribute}
           />
+          <div className="border-t border-slate-100 my-1" />
+          <MenuAction
+            icon={<Trash2 className="w-4 h-4" />}
+            label="Xóa người"
+            desc="Xóa người này khỏi cây gia phả"
+            onClick={onDelete}
+          />
         </div>
       </div>
     </div>
@@ -1813,6 +1986,7 @@ const MemoPersonCard = memo(
     prev.isFocused === next.isFocused &&
     prev.isHovered === next.isHovered &&
     prev.isSelected === next.isSelected &&
+    prev.isKinshipSelected === next.isKinshipSelected &&
     prev.zoomLevel === next.zoomLevel &&
     prev.showCollapseToggle === next.showCollapseToggle &&
     prev.isCollapsed === next.isCollapsed,
@@ -1824,6 +1998,7 @@ function PersonCard({
   isFocused,
   isHovered,
   isSelected,
+  isKinshipSelected,
   zoomLevel,
   showCollapseToggle,
   isCollapsed,
@@ -1837,6 +2012,7 @@ function PersonCard({
   isFocused: boolean;
   isHovered: boolean;
   isSelected: boolean;
+  isKinshipSelected?: boolean;
   zoomLevel: ZoomLevel;
   showCollapseToggle: boolean;
   isCollapsed: boolean;
@@ -1931,13 +2107,15 @@ function PersonCard({
 
   const glowClass = isSelected
     ? "ring-2 ring-blue-500 ring-offset-2 shadow-blue-200 shadow-lg"
-    : isHighlighted
-      ? "ring-2 ring-amber-400 ring-offset-2"
-      : isFocused
-        ? "ring-2 ring-indigo-400 ring-offset-2"
-        : isHovered
-          ? "ring-1 ring-indigo-200"
-          : "";
+    : isKinshipSelected
+      ? "ring-2 ring-purple-500 ring-offset-2 shadow-purple-200 shadow-lg"
+      : isHighlighted
+        ? "ring-2 ring-amber-400 ring-offset-2"
+        : isFocused
+          ? "ring-2 ring-indigo-400 ring-offset-2"
+          : isHovered
+            ? "ring-1 ring-indigo-200"
+            : "";
 
   // F1: COMPACT zoom → smaller card with just name + gen
   if (zoomLevel === "compact") {
@@ -2363,8 +2541,13 @@ function EditorPanel({
   onClose: () => void;
 }) {
   const [editName, setEditName] = useState("");
+  const [editGender, setEditGender] = useState<number | null>(null);
   const [editBirthYear, setEditBirthYear] = useState("");
+  const [editBirthMonth, setEditBirthMonth] = useState("");
+  const [editBirthDay, setEditBirthDay] = useState("");
   const [editDeathYear, setEditDeathYear] = useState("");
+  const [editDeathMonth, setEditDeathMonth] = useState("");
+  const [editDeathDay, setEditDeathDay] = useState("");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [parentSearch, setParentSearch] = useState("");
@@ -2386,8 +2569,32 @@ function EditorPanel({
   useEffect(() => {
     if (person) {
       setEditName(person.displayName || "");
+      setEditGender(person.gender || null);
       setEditBirthYear(person.birthYear?.toString() || "");
       setEditDeathYear(person.deathYear?.toString() || "");
+
+      // Parse birth date (YYYY-MM-DD)
+      if ((person as any).birthDate) {
+        const [y, m, d] = (person as any).birthDate.split("-");
+        setEditBirthYear(y || "");
+        setEditBirthMonth(m || "");
+        setEditBirthDay(d || "");
+      } else {
+        setEditBirthMonth("");
+        setEditBirthDay("");
+      }
+
+      // Parse death date (YYYY-MM-DD)
+      if ((person as any).deathDate) {
+        const [y, m, d] = (person as any).deathDate.split("-");
+        setEditDeathYear(y || "");
+        setEditDeathMonth(m || "");
+        setEditDeathDay(d || "");
+      } else {
+        setEditDeathMonth("");
+        setEditDeathDay("");
+      }
+
       setDirty(false);
       setParentSearch("");
       setShowParentDropdown(false);
@@ -2481,10 +2688,30 @@ function EditorPanel({
     setSaving(true);
     const fields: Record<string, unknown> = {};
     if (editName !== person.displayName) fields.displayName = editName;
+    if (editGender !== person.gender) fields.gender = editGender;
+
     const newBirth = editBirthYear ? parseInt(editBirthYear) : null;
     if (newBirth !== (person.birthYear ?? null)) fields.birthYear = newBirth;
+
     const newDeath = editDeathYear ? parseInt(editDeathYear) : null;
     if (newDeath !== (person.deathYear ?? null)) fields.deathYear = newDeath;
+
+    // Build birth date from y/m/d
+    const birthDateStr =
+      editBirthYear && editBirthMonth && editBirthDay
+        ? `${editBirthYear}-${editBirthMonth.padStart(2, "0")}-${editBirthDay.padStart(2, "0")}`
+        : null;
+    const oldBirthDate = (person as any).birthDate || null;
+    if (birthDateStr !== oldBirthDate) fields.birthDate = birthDateStr;
+
+    // Build death date from y/m/d
+    const deathDateStr =
+      editDeathYear && editDeathMonth && editDeathDay
+        ? `${editDeathYear}-${editDeathMonth.padStart(2, "0")}-${editDeathDay.padStart(2, "0")}`
+        : null;
+    const oldDeathDate = (person as any).deathDate || null;
+    if (deathDateStr !== oldDeathDate) fields.deathDate = deathDateStr;
+
     if (Object.keys(fields).length > 0) {
       onUpdatePerson(person.handle, fields);
     }
@@ -2527,30 +2754,15 @@ function EditorPanel({
         <div className="flex-1 overflow-y-auto">
           {/* Editable person info */}
           <div className="p-3 border-b space-y-2">
-            {/* Dòng 1: Handle + Giới tính */}
-            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+            {/* Handle info */}
+            {/* <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
               <span className="text-muted-foreground text-xs font-normal">
                 {person.handle}
               </span>
-              <div
-                className={`ml-auto px-2 py-1 rounded-lg text-xs font-bold shadow-sm
-                                ${
-                                  person.gender === 1
-                                    ? "bg-gradient-to-r from-blue-500 to-indigo-600 text-white"
-                                    : person.gender === 2
-                                      ? "bg-gradient-to-r from-pink-500 to-rose-600 text-white"
-                                      : "bg-gradient-to-r from-gray-400 to-gray-500 text-white"
-                                }`}
-              >
-                {person.gender === 1
-                  ? "👨 NAM"
-                  : person.gender === 2
-                    ? "👩 NỮ"
-                    : "❓ KHÔNG RÕ"}
-              </div>
-            </div>
+            </div> */}
             <p className="text-xs text-muted-foreground">
-              Đời {(person as any).generation ?? "?"} · {person.handle}
+              Đời {(person as any).generation ?? "?"}
+              {/* {person.handle} */}
             </p>
             {parentPerson && (
               <p className="text-xs text-muted-foreground">
@@ -2574,8 +2786,71 @@ function EditorPanel({
               />
             </div>
 
+            {/* Editable Gender */}
+            <div>
+              <label className="text-xs text-muted-foreground block mb-1.5">
+                Giới tính
+              </label>
+              <div className="flex gap-3">
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="gender-male"
+                    checked={editGender === 1}
+                    onChange={() => {
+                      setEditGender(1);
+                      setDirty(true);
+                    }}
+                    className="rounded"
+                  />
+                  <label
+                    htmlFor="gender-male"
+                    className="text-xs cursor-pointer"
+                  >
+                    Nam
+                  </label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="gender-female"
+                    checked={editGender === 2}
+                    onChange={() => {
+                      setEditGender(2);
+                      setDirty(true);
+                    }}
+                    className="rounded"
+                  />
+                  <label
+                    htmlFor="gender-female"
+                    className="text-xs cursor-pointer"
+                  >
+                    Nữ
+                  </label>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <input
+                    type="radio"
+                    id="gender-unknown"
+                    checked={editGender === 0 || editGender === null}
+                    onChange={() => {
+                      setEditGender(0);
+                      setDirty(true);
+                    }}
+                    className="rounded"
+                  />
+                  <label
+                    htmlFor="gender-unknown"
+                    className="text-xs cursor-pointer"
+                  >
+                    Không rõ
+                  </label>
+                </div>
+              </div>
+            </div>
+
             {/* Birth / Death Year */}
-            <div className="flex gap-2">
+            {/* <div className="flex gap-2">
               <div className="flex-1">
                 <label className="text-xs text-muted-foreground">
                   Năm sinh
@@ -2604,8 +2879,7 @@ function EditorPanel({
                   placeholder="—"
                 />
               </div>
-            </div>
-
+            </div> */}
             {/* Living status */}
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Trạng thái:</span>
@@ -2619,6 +2893,130 @@ function EditorPanel({
               >
                 {person.isLiving ? "● Còn sống" : "○ Đã mất"}
               </button>
+            </div>
+            {/* Birth / Death Year and Full Date */}
+            <div className="space-y-3">
+              {/* Birth */}
+              <div>
+                <label className="text-xs text-muted-foreground block mb-1.5">
+                  Ngày sinh
+                </label>
+                <div className="flex gap-2">
+                  <div className="flex-1">
+                    <label className="text-[10px] text-muted-foreground">
+                      Năm
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full border rounded px-2 py-1 text-sm bg-background"
+                      value={editBirthYear}
+                      onChange={(e) => {
+                        setEditBirthYear(e.target.value);
+                        setDirty(true);
+                      }}
+                      placeholder="YYYY"
+                      min="1800"
+                      max="2100"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-muted-foreground">
+                      Tháng
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full border rounded px-2 py-1 text-sm bg-background"
+                      value={editBirthMonth}
+                      onChange={(e) => {
+                        setEditBirthMonth(e.target.value);
+                        setDirty(true);
+                      }}
+                      placeholder="MM"
+                      min="1"
+                      max="12"
+                    />
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-[10px] text-muted-foreground">
+                      Ngày
+                    </label>
+                    <input
+                      type="number"
+                      className="w-full border rounded px-2 py-1 text-sm bg-background"
+                      value={editBirthDay}
+                      onChange={(e) => {
+                        setEditBirthDay(e.target.value);
+                        setDirty(true);
+                      }}
+                      placeholder="DD"
+                      min="1"
+                      max="31"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Death */}
+              {person.isLiving === false && (
+                <div>
+                  <label className="text-xs text-muted-foreground block mb-1.5">
+                    Ngày mất
+                  </label>
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted-foreground">
+                        Năm
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full border rounded px-2 py-1 text-sm bg-background"
+                        value={editDeathYear}
+                        onChange={(e) => {
+                          setEditDeathYear(e.target.value);
+                          setDirty(true);
+                        }}
+                        placeholder="YYYY"
+                        min="1800"
+                        max="2100"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted-foreground">
+                        Tháng
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full border rounded px-2 py-1 text-sm bg-background"
+                        value={editDeathMonth}
+                        onChange={(e) => {
+                          setEditDeathMonth(e.target.value);
+                          setDirty(true);
+                        }}
+                        placeholder="MM"
+                        min="1"
+                        max="12"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="text-[10px] text-muted-foreground">
+                        Ngày
+                      </label>
+                      <input
+                        type="number"
+                        className="w-full border rounded px-2 py-1 text-sm bg-background"
+                        value={editDeathDay}
+                        onChange={(e) => {
+                          setEditDeathDay(e.target.value);
+                          setDirty(true);
+                        }}
+                        placeholder="DD"
+                        min="1"
+                        max="31"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Save button */}

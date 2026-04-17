@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS people (
     generation INT DEFAULT 1,
     birth_year INT,
     death_year INT,
+    birth_date DATE,
+    death_date DATE,
     is_living BOOLEAN DEFAULT true,
     is_privacy_filtered BOOLEAN DEFAULT false,
     is_patrilineal BOOLEAN DEFAULT true,
@@ -23,6 +25,14 @@ CREATE TABLE IF NOT EXISTS people (
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Add contact and image fields to people table
+ALTER TABLE people ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS facebook TEXT;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS current_address TEXT;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS birth_date DATE;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS death_date DATE;
 
 CREATE TABLE IF NOT EXISTS families (
     handle TEXT PRIMARY KEY,
@@ -51,6 +61,168 @@ DROP TRIGGER IF EXISTS families_updated_at ON families;
 CREATE TRIGGER families_updated_at BEFORE UPDATE ON families
 FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  1.5 KINSHIP RELATIONSHIP FUNCTION                    ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- Function to get relationship between two people
+CREATE OR REPLACE FUNCTION get_kinship_relationship(
+    p_person1_handle TEXT,
+    p_person2_handle TEXT
+)
+RETURNS TEXT AS $$
+DECLARE
+    person1 RECORD;
+    person2 RECORD;
+    gen_diff INT;
+    p1_father TEXT;
+    p1_mother TEXT;
+    p2_father TEXT;
+    p2_mother TEXT;
+    p1_paternal_grandpa TEXT;
+    p1_maternal_grandpa TEXT;
+    p2_paternal_grandpa TEXT;
+    p2_maternal_grandpa TEXT;
+    common_grandpa TEXT;
+    distance_to_common INT;
+BEGIN
+    -- Get both people's info
+    SELECT * INTO person1 FROM people WHERE handle = p_person1_handle LIMIT 1;
+    SELECT * INTO person2 FROM people WHERE handle = p_person2_handle LIMIT 1;
+
+    IF person1 IS NULL OR person2 IS NULL THEN
+        RETURN 'Không xác định';
+    END IF;
+
+    -- If same person
+    IF p_person1_handle = p_person2_handle THEN
+        RETURN 'Chính mình';
+    END IF;
+
+    -- Get direct parents
+    SELECT father_handle, mother_handle INTO p1_father, p1_mother
+    FROM families WHERE children @> ARRAY[p_person1_handle] LIMIT 1;
+    
+    SELECT father_handle, mother_handle INTO p2_father, p2_mother
+    FROM families WHERE children @> ARRAY[p_person2_handle] LIMIT 1;
+
+    gen_diff := person2.generation - person1.generation;
+
+    -- ===== DIRECT PARENT-CHILD RELATIONSHIP =====
+    IF gen_diff = -1 AND (p1_father = p_person2_handle OR p1_mother = p_person2_handle) THEN
+        IF person2.gender = 1 THEN RETURN 'Cha'; ELSE RETURN 'Mẹ'; END IF;
+    END IF;
+
+    IF gen_diff = 1 AND (p2_father = p_person1_handle OR p2_mother = p_person1_handle) THEN
+        IF person2.gender = 1 THEN RETURN 'Con trai'; ELSE RETURN 'Con gái'; END IF;
+    END IF;
+
+    -- ===== NEPHEW/NIECE: person1 is uncle/aunt, person2 is their niece/nephew =====
+    -- Check if person2's parent is a sibling of person1 (same generation, same parents as person1)
+    IF gen_diff = 1 AND p2_father IS NOT NULL THEN
+        -- Check if p2_father is sibling of person1
+        SELECT father_handle, mother_handle INTO p1_paternal_grandpa, p1_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p_person1_handle] LIMIT 1;
+        
+        SELECT father_handle, mother_handle INTO p2_paternal_grandpa, p2_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p2_father] LIMIT 1;
+        
+        -- If they share the same parent and are different people
+        IF p1_paternal_grandpa IS NOT NULL AND p1_paternal_grandpa = p2_paternal_grandpa 
+           AND p_person1_handle != p2_father THEN
+            IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+        END IF;
+    END IF;
+
+    IF gen_diff = 1 AND p2_mother IS NOT NULL THEN
+        -- Check if p2_mother is sibling of person1
+        SELECT father_handle, mother_handle INTO p1_paternal_grandpa, p1_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p_person1_handle] LIMIT 1;
+        
+        SELECT father_handle, mother_handle INTO p2_paternal_grandpa, p2_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p2_mother] LIMIT 1;
+        
+        -- If they share the same parent and are different people
+        IF p1_paternal_grandpa IS NOT NULL AND p1_paternal_grandpa = p2_paternal_grandpa 
+           AND p_person1_handle != p2_mother THEN
+            IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+        END IF;
+    END IF;
+
+    -- ===== DIRECT SIBLINGS (same parents) =====
+    IF gen_diff = 0 THEN
+        IF (p1_father IS NOT NULL AND p1_father != '' AND p1_father = p2_father)
+           OR (p1_mother IS NOT NULL AND p1_mother != '' AND p1_mother = p2_mother) THEN
+            IF person2.gender = 1 THEN RETURN 'Anh/Em trai'; ELSE RETURN 'Chị/Em gái'; END IF;
+        END IF;
+    END IF;
+
+    -- ===== UNCLE/AUNT RELATIONSHIP (person2 is sibling of person1's parent) =====
+    IF gen_diff = -1 AND p1_father IS NOT NULL THEN
+        -- Check if person2 is sibling of father
+        SELECT father_handle INTO p1_paternal_grandpa FROM families 
+        WHERE children @> ARRAY[p1_father] LIMIT 1;
+        
+        IF p1_paternal_grandpa IS NOT NULL THEN
+            SELECT father_handle INTO p2_paternal_grandpa FROM families 
+            WHERE children @> ARRAY[p_person2_handle] LIMIT 1;
+            
+            IF p1_paternal_grandpa = p2_paternal_grandpa THEN
+                IF person2.gender = 1 THEN RETURN 'Chú'; ELSE RETURN 'Cô'; END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    IF gen_diff = -1 AND p1_mother IS NOT NULL THEN
+        -- Check if person2 is sibling of mother
+        SELECT father_handle INTO p1_maternal_grandpa FROM families 
+        WHERE children @> ARRAY[p1_mother] LIMIT 1;
+        
+        IF p1_maternal_grandpa IS NOT NULL THEN
+            SELECT father_handle INTO p2_paternal_grandpa FROM families 
+            WHERE children @> ARRAY[p_person2_handle] LIMIT 1;
+            
+            IF p1_maternal_grandpa = p2_paternal_grandpa THEN
+                IF person2.gender = 1 THEN RETURN 'Chú'; ELSE RETURN 'Cô'; END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    -- ===== COUSIN RELATIONSHIP =====
+    IF gen_diff = 0 THEN
+        IF person2.gender = 1 THEN RETURN 'Anh/Em họ trai'; ELSE RETURN 'Anh/Em họ gái'; END IF;
+    END IF;
+
+    -- ===== GRANDPARENT RELATIONSHIPS =====
+    IF gen_diff = -2 THEN
+        IF person2.gender = 1 THEN RETURN 'Ông'; ELSE RETURN 'Bà'; END IF;
+    END IF;
+
+    -- ===== GRANDCHILD RELATIONSHIPS =====
+    IF gen_diff = 2 THEN
+        IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+    END IF;
+
+    -- ===== OTHER ANCESTORS =====
+    IF gen_diff < -2 THEN
+        IF gen_diff = -3 THEN RETURN 'Cụ';
+        ELSIF gen_diff = -4 THEN RETURN 'Cao tổ';
+        ELSIF gen_diff <= -5 THEN RETURN 'Tổ tiên';
+        END IF;
+    END IF;
+
+    -- ===== OTHER DESCENDANTS =====
+    IF gen_diff > 2 THEN
+        IF gen_diff = 3 THEN RETURN 'Chắt';
+        ELSIF gen_diff = 4 THEN RETURN 'Chút';
+        ELSIF gen_diff >= 5 THEN RETURN 'Hậu duệ';
+        END IF;
+    END IF;
+
+    RETURN 'Quan hệ khác';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 
 -- ╔══════════════════════════════════════════════════════════╗
 -- ║  2. AUTH: PROFILES + TRIGGER                           ║
@@ -63,8 +235,9 @@ CREATE TABLE profiles (
     email TEXT UNIQUE,
     display_name TEXT,
     username TEXT UNIQUE,
-    role TEXT DEFAULT 'viewer' CHECK (role IN ('admin','user','viewer')),
+    role TEXT DEFAULT 'viewer' CHECK (role IN ('admin','user','viewer','guest')),
     status TEXT DEFAULT 'active',
+    guest_of UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -121,56 +294,105 @@ ALTER TABLE families ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.user
 CREATE INDEX IF NOT EXISTS idx_people_owner ON people(owner_id);
 CREATE INDEX IF NOT EXISTS idx_families_owner ON families(owner_id);
 
+-- Helper function to check if someone is a family member of another person
+CREATE OR REPLACE FUNCTION is_family_member(p_person_handle TEXT, p_target_person_handle TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    person_record RECORD;
+    target_record RECORD;
+    parent_family TEXT;
+    person_family TEXT;
+BEGIN
+    -- Get both people
+    SELECT * INTO person_record FROM people WHERE handle = p_person_handle;
+    SELECT * INTO target_record FROM people WHERE handle = p_target_person_handle;
+    
+    IF person_record IS NULL OR target_record IS NULL THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Check if same person
+    IF p_person_handle = p_target_person_handle THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check if target is in person's families list (direct family)
+    IF target_record.families && person_record.families THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check if they share parent families (siblings)
+    IF person_record.parent_families && target_record.parent_families THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check if one is parent of the other (parent_families check)
+    -- If target is in person's parent families, target is a parent
+    IF person_record.parent_families && target_record.families THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- If person is in target's parent families, person is a parent
+    IF target_record.parent_families && person_record.families THEN
+        RETURN TRUE;
+    END IF;
+    
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 -- Row Level Security: Enable RLS
 ALTER TABLE people ENABLE ROW LEVEL SECURITY;
 ALTER TABLE families ENABLE ROW LEVEL SECURITY;
 
--- Policies: owner, user, or admin can access (including demo data with owner_id = NULL)
-CREATE POLICY "owner_user_admin_read_people" ON people
+-- Policies: owner, user, admin, or guest can access (including demo data with owner_id = NULL)
+CREATE POLICY "owner_user_admin_guest_read_people" ON people
     FOR SELECT USING (
         owner_id = auth.uid() OR
         owner_id IS NULL OR
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user')) OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'guest' AND guest_of = owner_id)
     );
 
-CREATE POLICY "owner_user_admin_insert_people" ON people
+CREATE POLICY "owner_user_admin_guest_insert_people" ON people
     FOR INSERT WITH CHECK (
         owner_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
     );
 
-CREATE POLICY "owner_user_admin_update_people" ON people
+CREATE POLICY "owner_user_admin_guest_update_people" ON people
     FOR UPDATE USING (
         owner_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
     );
 
-CREATE POLICY "owner_user_admin_delete_people" ON people
+CREATE POLICY "owner_user_admin_guest_delete_people" ON people
     FOR DELETE USING (
         owner_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
     );
 
-CREATE POLICY "owner_user_admin_read_families" ON families
+CREATE POLICY "owner_user_admin_guest_read_families" ON families
     FOR SELECT USING (
         owner_id = auth.uid() OR
         owner_id IS NULL OR
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user')) OR
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'guest' AND guest_of = owner_id)
     );
 
-CREATE POLICY "owner_user_admin_insert_families" ON families
+CREATE POLICY "owner_user_admin_guest_insert_families" ON families
     FOR INSERT WITH CHECK (
         owner_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
     );
 
-CREATE POLICY "owner_user_admin_update_families" ON families
+CREATE POLICY "owner_user_admin_guest_update_families" ON families
     FOR UPDATE USING (
         owner_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
     );
 
-CREATE POLICY "owner_user_admin_delete_families" ON families
+CREATE POLICY "owner_user_admin_guest_delete_families" ON families
     FOR DELETE USING (
         owner_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
@@ -214,6 +436,28 @@ CREATE TABLE IF NOT EXISTS comments (
     post_id UUID REFERENCES posts(id) ON DELETE CASCADE,
     author_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
     body TEXT NOT NULL,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Notifications table
+CREATE TABLE IF NOT EXISTS notifications (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    type TEXT NOT NULL,
+    title TEXT NOT NULL,
+    message TEXT NOT NULL,
+    link_url TEXT,
+    is_read BOOLEAN DEFAULT false,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- Guest invitation codes
+CREATE TABLE IF NOT EXISTS guest_invitations (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code TEXT UNIQUE NOT NULL,
+    created_by UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+    used_by UUID REFERENCES auth.users(id),
+    expires_at TIMESTAMPTZ DEFAULT (now() + interval '30 days'),
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -287,6 +531,14 @@ FOR INSERT WITH CHECK (auth.uid() = author_id);
 CREATE POLICY "delete own comments" ON comments
 FOR DELETE USING (auth.uid() = author_id);
 
+-- NOTIFICATIONS
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY "read notifications" ON notifications FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "insert notifications" ON notifications FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "update own notifications" ON notifications FOR UPDATE USING (auth.uid() = user_id);
+CREATE POLICY "delete own notifications" ON notifications FOR DELETE USING (auth.uid() = user_id);
+
 
 -- Sửa table people cho handle tự động tăng
 CREATE SEQUENCE IF NOT EXISTS person_handle_seq START 1000;
@@ -306,6 +558,35 @@ BEGIN
         END IF;
         -- If exists, loop again (very rare case)
     END LOOP;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Function to generate family member account credentials
+CREATE OR REPLACE FUNCTION generate_family_account_credentials(p_display_name TEXT)
+RETURNS JSON AS $$
+DECLARE
+    last_name TEXT;
+    random_num TEXT;
+    username TEXT;
+    email TEXT;
+BEGIN
+    -- Extract last name (last word from display_name)
+    last_name := TRIM(REGEXP_SUBSTR(p_display_name, '[^ ]+$'));
+    
+    -- Generate random 3-digit number
+    random_num := LPAD((FLOOR(RANDOM() * 1000)::INTEGER)::TEXT, 3, '0');
+    
+    -- Create username from display_name
+    username := REGEXP_REPLACE(p_display_name, '\s+', '_', 'g');
+    
+    -- Create email: lastname + random number + @gmail.com
+    email := LOWER(last_name || random_num) || '@gmail.com';
+    
+    RETURN json_build_object(
+        'username', username,
+        'email', email,
+        'password', '123456'
+    );
 END;
 $$ LANGUAGE plpgsql;
 
@@ -369,6 +650,10 @@ CREATE OR REPLACE FUNCTION add_person(
     p_is_living BOOLEAN DEFAULT true,
     p_is_privacy_filtered BOOLEAN DEFAULT false,
     p_is_patrilineal BOOLEAN DEFAULT true,
+    p_image_url TEXT DEFAULT NULL,
+    p_phone TEXT DEFAULT NULL,
+    p_facebook TEXT DEFAULT NULL,
+    p_current_address TEXT DEFAULT NULL,
     p_owner_id UUID DEFAULT auth.uid()
 )
 RETURNS TEXT AS $$
@@ -381,10 +666,10 @@ BEGIN
     -- Insert new person
     INSERT INTO people (
         handle, display_name, gender, generation, birth_year, death_year, 
-        is_living, is_privacy_filtered, is_patrilineal, owner_id
+        is_living, is_privacy_filtered, is_patrilineal, image_url, phone, facebook, current_address, owner_id
     ) VALUES (
         new_handle, p_display_name, p_gender, p_generation, p_birth_year, p_death_year,
-        p_is_living, p_is_privacy_filtered, p_is_patrilineal, p_owner_id
+        p_is_living, p_is_privacy_filtered, p_is_patrilineal, p_image_url, p_phone, p_facebook, p_current_address, p_owner_id
     );
     
     RETURN new_handle;
@@ -397,16 +682,24 @@ CREATE OR REPLACE FUNCTION add_spouse(
     p_spouse_name TEXT,
     p_spouse_gender INTEGER,
     p_spouse_birth_year INTEGER DEFAULT NULL,
+    p_spouse_birth_date DATE DEFAULT NULL,
     p_spouse_death_year INTEGER DEFAULT NULL,
+    p_spouse_death_date DATE DEFAULT NULL,
     p_spouse_is_living BOOLEAN DEFAULT true,
     p_spouse_is_patrilineal BOOLEAN DEFAULT false,
+    p_spouse_image_url TEXT DEFAULT NULL,
+    p_spouse_phone TEXT DEFAULT NULL,
+    p_spouse_facebook TEXT DEFAULT NULL,
+    p_spouse_current_address TEXT DEFAULT NULL,
+    p_create_account BOOLEAN DEFAULT false,
     p_owner_id UUID DEFAULT auth.uid()
 )
-RETURNS TEXT AS $$
+RETURNS JSON AS $$
 DECLARE
     spouse_handle TEXT;
     person_record RECORD;
     family_handle TEXT;
+    account_creds JSON;
 BEGIN
     -- Check if person exists and user has access
     SELECT * INTO person_record 
@@ -422,14 +715,19 @@ BEGIN
     -- Generate spouse handle
     SELECT generate_person_handle() INTO spouse_handle;
     
+    -- Generate account credentials if requested
+    IF p_create_account THEN
+        SELECT generate_family_account_credentials(p_spouse_name) INTO account_creds;
+    END IF;
+    
     -- Insert spouse
     INSERT INTO people (
-        handle, display_name, gender, generation, birth_year, death_year, 
-        is_living, is_privacy_filtered, is_patrilineal, owner_id
+        handle, display_name, gender, generation, birth_year, birth_date, death_year, death_date, 
+        is_living, is_privacy_filtered, is_patrilineal, image_url, phone, facebook, current_address, owner_id
     ) VALUES (
         spouse_handle, p_spouse_name, p_spouse_gender, person_record.generation, 
-        p_spouse_birth_year, p_spouse_death_year, p_spouse_is_living, 
-        false, p_spouse_is_patrilineal, person_record.owner_id
+        p_spouse_birth_year, p_spouse_birth_date, p_spouse_death_year, p_spouse_death_date, p_spouse_is_living, 
+        false, p_spouse_is_patrilineal, p_spouse_image_url, p_spouse_phone, p_spouse_facebook, p_spouse_current_address, person_record.owner_id
     );
     
     -- Create or update family
@@ -477,7 +775,14 @@ BEGIN
         WHERE handle = spouse_handle;
     END IF;
     
-    RETURN spouse_handle;
+    -- Return result with person handle and account credentials if created
+    RETURN json_build_object(
+        'person_handle', spouse_handle,
+        'account', account_creds,
+        'family_handle', family_handle,
+        'person_name', p_spouse_name,
+        'relation', 'vợ/chồng'
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -487,16 +792,25 @@ CREATE OR REPLACE FUNCTION add_child(
     p_child_name TEXT,
     p_child_gender INTEGER DEFAULT 1,
     p_child_birth_year INTEGER DEFAULT NULL,
+    p_child_birth_date DATE DEFAULT NULL,
     p_child_death_year INTEGER DEFAULT NULL,
+    p_child_death_date DATE DEFAULT NULL,
     p_child_is_living BOOLEAN DEFAULT true,
+    p_child_image_url TEXT DEFAULT NULL,
+    p_child_phone TEXT DEFAULT NULL,
+    p_child_facebook TEXT DEFAULT NULL,
+    p_child_current_address TEXT DEFAULT NULL,
+    p_create_account BOOLEAN DEFAULT false,
     p_owner_id UUID DEFAULT auth.uid()
 )
-RETURNS TEXT AS $$
+RETURNS JSON AS $$
 DECLARE
     child_handle TEXT;
     family_record RECORD;
     parent_generation INTEGER;
     parent_owner UUID;
+    account_creds JSON;
+    parent_names TEXT;
 BEGIN
     -- Check if family exists and user has access
     SELECT * INTO family_record 
@@ -510,22 +824,34 @@ BEGIN
         RAISE EXCEPTION 'Family not found or access denied';
     END IF;
     
-    -- Get parent generation
+    -- Get parent generation and names for description
     SELECT generation INTO parent_generation 
     FROM people 
     WHERE handle = COALESCE(family_record.father_handle, family_record.mother_handle);
     
+    -- Get parent names for account description
+    SELECT COALESCE(father.display_name || ' & ' || mother.display_name, father.display_name, mother.display_name)
+    INTO parent_names
+    FROM people father
+    LEFT JOIN people mother ON mother.handle = family_record.mother_handle
+    WHERE father.handle = family_record.father_handle;
+    
     -- Generate child handle
     SELECT generate_person_handle() INTO child_handle;
     
+    -- Generate account credentials if requested
+    IF p_create_account THEN
+        SELECT generate_family_account_credentials(p_child_name) INTO account_creds;
+    END IF;
+    
     -- Insert child
     INSERT INTO people (
-        handle, display_name, gender, generation, birth_year, death_year, 
-        is_living, is_privacy_filtered, is_patrilineal, parent_families, owner_id
+        handle, display_name, gender, generation, birth_year, birth_date, death_year, death_date, 
+        is_living, is_privacy_filtered, is_patrilineal, parent_families, image_url, phone, facebook, current_address, owner_id
     ) VALUES (
         child_handle, p_child_name, p_child_gender, parent_generation + 1, 
-        p_child_birth_year, p_child_death_year, p_child_is_living, 
-        false, true, ARRAY[p_family_handle], family_record.owner_id
+        p_child_birth_year, p_child_birth_date, p_child_death_year, p_child_death_date, p_child_is_living, 
+        false, true, ARRAY[p_family_handle], p_child_image_url, p_child_phone, p_child_facebook, p_child_current_address, family_record.owner_id
     );
     
     -- Update family's children
@@ -533,7 +859,15 @@ BEGIN
     SET children = children || ARRAY[child_handle] 
     WHERE handle = p_family_handle;
     
-    RETURN child_handle;
+    -- Return result with person handle and account credentials if created
+    RETURN json_build_object(
+        'person_handle', child_handle,
+        'account', account_creds,
+        'family_handle', p_family_handle,
+        'person_name', p_child_name,
+        'parent_names', parent_names,
+        'relation', 'con'
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -554,6 +888,7 @@ CREATE TABLE IF NOT EXISTS plans (
     to_role TEXT NOT NULL CHECK (to_role IN ('user')),
     is_free BOOLEAN DEFAULT false,
     max_uses INTEGER, -- NULL = unlimited
+    people_limit INTEGER DEFAULT 30, -- Number of people user can add with this plan
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
@@ -630,6 +965,7 @@ DECLARE
     plan_record RECORD;
     expires_at TIMESTAMPTZ;
     subscription_id UUID;
+    updated_rows INTEGER;
 BEGIN
     -- Check if user can use this plan
     IF NOT can_use_plan(p_user_id, p_plan_id) THEN
@@ -647,8 +983,28 @@ BEGIN
     VALUES (p_user_id, p_plan_id, expires_at)
     RETURNING id INTO subscription_id;
 
-    -- Update user role
+    -- Update user role - bypass RLS for this system operation
+    SET LOCAL row_security = OFF;
+    
     UPDATE profiles SET role = plan_record.to_role WHERE id = p_user_id;
+    GET DIAGNOSTICS updated_rows = ROW_COUNT;
+    
+    RESET row_security;
+
+    -- Check if update actually succeeded
+    IF updated_rows = 0 THEN
+        RETURN 'Error: Failed to update user role';
+    END IF;
+
+    -- Create notification for role upgrade
+    INSERT INTO notifications (user_id, type, title, message, link_url)
+    VALUES (
+        p_user_id,
+        'SYSTEM',
+        'Bạn đã được nâng cấp lên User',
+        'Tài khoản của bạn đã được nâng cấp lên kế hoạch ' || plan_record.name || '. Thưởng thức các tính năng mới ngay! ',
+        '/pricing'
+    );
 
     -- Track usage for free plans
     IF plan_record.is_free THEN
@@ -661,7 +1017,7 @@ BEGIN
 
     RETURN 'Success';
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Function to auto-downgrade expired subscriptions
 CREATE OR REPLACE FUNCTION auto_downgrade_expired_subscriptions()
@@ -677,8 +1033,23 @@ BEGIN
         JOIN plans p ON s.plan_id = p.id
         WHERE s.status = 'active' AND s.expires_at < now()
     LOOP
-        -- Downgrade user role
+        -- Downgrade user role - bypass RLS for this system operation
+        SET LOCAL row_security = OFF;
+        
         UPDATE profiles SET role = expired_sub.from_role WHERE id = expired_sub.user_id;
+        
+        RESET row_security;
+
+        -- Create expiry notification
+        INSERT INTO notifications (user_id, type, title, message, link_url)
+        VALUES (
+            expired_sub.user_id,
+            'SYSTEM',
+            'Tài khoản User đã hết hạn',
+            'Tài khoản User của bạn đã hết hạn và đã quay về role Viewer. Vui lòng gia hạn để tiếp tục sử dụng tính năng.',
+            '/pricing'
+        );
+
         -- Mark subscription as expired
         UPDATE subscriptions SET status = 'expired' WHERE user_id = expired_sub.user_id AND status = 'active';
         downgrade_count := downgrade_count + 1;
@@ -686,20 +1057,61 @@ BEGIN
 
     RETURN downgrade_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Create a trigger to auto-downgrade on subscription updates
+CREATE OR REPLACE FUNCTION send_subscription_expiry_reminders()
+RETURNS INTEGER AS $$
+DECLARE
+    expiring RECORD;
+    reminder_count INTEGER := 0;
+BEGIN
+    FOR expiring IN
+        SELECT s.user_id, p.name, s.expires_at
+        FROM subscriptions s
+        JOIN plans p ON s.plan_id = p.id
+        WHERE s.status = 'active' AND s.expires_at BETWEEN now() AND now() + INTERVAL '2 days'
+    LOOP
+        -- avoid duplicate reminder in same period
+        IF NOT EXISTS (
+            SELECT 1 FROM notifications
+            WHERE user_id = expiring.user_id
+              AND type = 'SYSTEM'
+              AND title = 'Tài khoản User sắp hết hạn'
+              AND created_at > now() - INTERVAL '1 day'
+        ) THEN
+            INSERT INTO notifications (user_id, type, title, message, link_url)
+            VALUES (
+                expiring.user_id,
+                'SYSTEM',
+                'Tài khoản User sắp hết hạn',
+                'Tài khoản của bạn trên gói ' || expiring.name || ' sẽ hết hạn vào ' || to_char(expiring.expires_at, 'DD/MM/YYYY HH24:MI') || '. Vui lòng gia hạn để không gián đoạn.',
+                '/pricing'
+            );
+            reminder_count := reminder_count + 1;
+        END IF;
+    END LOOP;
+
+    RETURN reminder_count;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION check_subscription_expiry()
 RETURNS TRIGGER AS $$
 BEGIN
     -- If subscription just expired, downgrade user
     IF NEW.status = 'active' AND NEW.expires_at < now() AND (OLD.status != 'active' OR OLD.expires_at >= now()) THEN
+        -- Bypass RLS for this system operation
+        SET LOCAL row_security = OFF;
+        
         UPDATE profiles SET role = (SELECT from_role FROM plans WHERE id = NEW.plan_id) WHERE id = NEW.user_id;
+        
+        RESET row_security;
         NEW.status := 'expired';
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE TRIGGER subscription_expiry_trigger
     BEFORE UPDATE ON subscriptions
@@ -707,22 +1119,31 @@ CREATE TRIGGER subscription_expiry_trigger
     EXECUTE FUNCTION check_subscription_expiry();
 
 -- Insert default plans
-INSERT INTO plans (name, description, price, duration_days, from_role, to_role, is_free, max_uses) VALUES
-('Free Trial', 'Nâng cấp lên User miễn phí trong 3 ngày', 0, 3, 'viewer', 'user', true, 1),
-('Monthly Premium', 'Nâng cấp lên User trong 1 tháng', 50000, 30, 'viewer', 'user', false, NULL)
+INSERT INTO plans (name, description, price, duration_days, from_role, to_role, is_free, max_uses, people_limit) VALUES
+('Free Trial', 'Nâng cấp lên User miễn phí trong 3 ngày', 0, 3, 'viewer', 'user', true, 1, 30),
+('Monthly Premium', 'Nâng cấp lên User trong 1 tháng', 50000, 30, 'viewer', 'user', false, NULL, 150)
 ON CONFLICT DO NOTHING;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
 -- ║  STORAGE: Posts bucket for images                       ║
 -- ╚══════════════════════════════════════════════════════════╝
-
+    
 -- Create posts storage bucket
 INSERT INTO storage.buckets (id, name, public, avif_autodetection, file_size_limit, allowed_mime_types)
 VALUES ('posts', 'posts', true, true, 5242880, '{"image/*"}')
 ON CONFLICT (id) DO NOTHING;
 
+-- Create people storage bucket for profile images
+INSERT INTO storage.buckets (id, name, public, avif_autodetection, file_size_limit, allowed_mime_types)
+VALUES ('people', 'people', true, true, 5242880, '{"image/*"}')
+ON CONFLICT (id) DO NOTHING;
+
 -- Storage policies for posts bucket
+DROP POLICY IF EXISTS "Authenticated users can upload post images" ON storage.objects;
+DROP POLICY IF EXISTS "Public can view post images" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own post images" ON storage.objects;
+
 CREATE POLICY "Authenticated users can upload post images" ON storage.objects
     FOR INSERT TO authenticated
     WITH CHECK (bucket_id = 'posts' AND auth.uid()::text = (string_to_array(name, '/'))[1]);
@@ -733,6 +1154,22 @@ CREATE POLICY "Public can view post images" ON storage.objects
 CREATE POLICY "Users can delete own post images" ON storage.objects
     FOR DELETE TO authenticated
     USING (bucket_id = 'posts' AND auth.uid()::text = (string_to_array(name, '/'))[1]);
+
+-- Storage policies for people bucket
+DROP POLICY IF EXISTS "Authenticated users can upload people images" ON storage.objects;
+DROP POLICY IF EXISTS "Public can view people images" ON storage.objects;
+DROP POLICY IF EXISTS "Users can delete own people images" ON storage.objects;
+
+CREATE POLICY "Authenticated users can upload people images" ON storage.objects
+    FOR INSERT TO authenticated
+    WITH CHECK (bucket_id = 'people' AND auth.uid()::text = (string_to_array(name, '/'))[1]);
+
+CREATE POLICY "Public can view people images" ON storage.objects
+    FOR SELECT USING (bucket_id = 'people');
+
+CREATE POLICY "Users can delete own people images" ON storage.objects
+    FOR DELETE TO authenticated
+    USING (bucket_id = 'people' AND auth.uid()::text = (string_to_array(name, '/'))[1]);
 
 
 -- ============================================================

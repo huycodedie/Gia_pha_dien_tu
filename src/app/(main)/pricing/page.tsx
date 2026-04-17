@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { toast } from "sonner";
 import { Crown, Check, Clock, Star, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,16 +83,54 @@ export default function PricingPage() {
       });
 
       if (error) {
-        alert("Lỗi: " + error.message);
+        toast.error("Lỗi: " + error.message);
       } else if (data === "Success") {
-        alert("Nâng cấp thành công!");
-        refreshProfile();
-        fetchSubscriptions(); // Refresh subscriptions list
+        toast.success("Nâng cấp thành công!");
+
+        // Wait for database to fully propagate the changes
+        // Increased timeout to ensure transaction completion
+        await new Promise((resolve) => setTimeout(resolve, 1500));
+
+        // Refresh profile with retry logic
+        let retries = 0;
+        const maxRetries = 3;
+        let upgradeConfirmed = false;
+
+        while (retries < maxRetries && !upgradeConfirmed) {
+          await refreshProfile();
+
+          // Check if role was actually upgraded
+          const { data: currentProfile } = await supabase
+            .from("profiles")
+            .select("role")
+            .eq("id", user.id)
+            .maybeSingle();
+
+          if (currentProfile?.role === "user") {
+            upgradeConfirmed = true;
+          } else if (retries < maxRetries - 1) {
+            // Wait before retrying
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            retries++;
+          } else {
+            retries++;
+          }
+        }
+
+        if (!upgradeConfirmed) {
+          console.warn("Role update may not have completed");
+        }
+
+        await fetchSubscriptions();
+      } else if (data && data.startsWith("Error:")) {
+        // Handle error message from RPC function
+        toast.error(data);
       } else {
-        alert(data);
+        toast.info(data);
       }
     } catch (err) {
-      alert("Có lỗi xảy ra");
+      toast.error("Có lỗi xảy ra");
+      console.error("Upgrade error:", err);
     }
     setUpgrading(null);
   };

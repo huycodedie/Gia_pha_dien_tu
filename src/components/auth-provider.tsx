@@ -59,13 +59,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchProfile = useCallback(async (userId: string) => {
     try {
+      // Fetch profile with cache busting - use short cache duration
       const { data, error } = await supabase
         .from("profiles")
         .select("*")
         .eq("id", userId)
         .maybeSingle();
+
       if (!error && data) {
-        setProfile(data as Profile);
+        // Check if user has any expired subscriptions and downgrade if needed
+        const { data: expiredSub, error: subError } = await supabase
+          .from("subscriptions")
+          .select("*, plans(from_role)")
+          .eq("user_id", userId)
+          .eq("status", "active")
+          .lt("expires_at", new Date().toISOString())
+          .maybeSingle();
+
+        if (!subError && expiredSub) {
+          // Found an expired subscription, downgrade user
+          const fromRole = (expiredSub as any).plans?.from_role || "viewer";
+
+          // Update user role in database
+          await supabase
+            .from("profiles")
+            .update({ role: fromRole })
+            .eq("id", userId);
+
+          // Mark subscription as expired
+          await supabase
+            .from("subscriptions")
+            .update({ status: "expired" })
+            .eq("id", expiredSub.id);
+
+          // Refresh profile with new role
+          const { data: updatedProfile } = await supabase
+            .from("profiles")
+            .select("*")
+            .eq("id", userId)
+            .maybeSingle();
+
+          if (updatedProfile) {
+            setProfile(updatedProfile as Profile);
+          }
+        } else {
+          // No expired subscriptions, just set the fetched profile
+          // This ensures we always have the latest data from the server
+          setProfile(data as Profile);
+        }
       } else {
         setProfile(null);
       }

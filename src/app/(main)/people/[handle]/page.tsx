@@ -30,6 +30,14 @@ import { CommentSection } from "@/components/comment-section";
 import { EditPersonDialog } from "@/components/edit-person-dialog";
 import { useAuth } from "@/components/auth-provider";
 
+// Format date from YYYY-MM-DD to DD/MM/YYYY
+function formatDateVN(dateStr: string): string {
+  if (!dateStr) return "—";
+  const parts = dateStr.split("-");
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+}
+
 export default function PersonProfilePage() {
   const params = useParams();
   const router = useRouter();
@@ -54,7 +62,9 @@ export default function PersonProfilePage() {
           displayName: row.display_name as string,
           gender: row.gender as number,
           birthYear: row.birth_year as number | undefined,
+          birthDate: row.birth_date as string | undefined,
           deathYear: row.death_year as number | undefined,
+          deathDate: row.death_date as string | undefined,
           generation: row.generation as number,
           isLiving: row.is_living as boolean,
           isPrivacyFiltered: row.is_privacy_filtered as boolean,
@@ -221,10 +231,7 @@ export default function PersonProfilePage() {
               )}
               <InfoRow
                 label="Ngày sinh"
-                value={
-                  person.birthDate ||
-                  (person.birthYear ? `${person.birthYear}` : "—")
-                }
+                value={person.birthDate ? formatDateVN(person.birthDate) : "—"}
               />
               {person.birthYear && (
                 <InfoRow
@@ -233,14 +240,11 @@ export default function PersonProfilePage() {
                 />
               )}
               <InfoRow label="Nơi sinh" value={person.birthPlace || "—"} />
-              {!person.isLiving && (
+              {person.deathDate && (
                 <>
                   <InfoRow
                     label="Ngày mất"
-                    value={
-                      person.deathDate ||
-                      (person.deathYear ? `${person.deathYear}` : "—")
-                    }
+                    value={formatDateVN(person.deathDate)}
                   />
                   <InfoRow label="Nơi mất" value={person.deathPlace || "—"} />
                 </>

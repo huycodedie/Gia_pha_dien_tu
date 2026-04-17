@@ -14,6 +14,8 @@ CREATE TABLE IF NOT EXISTS people (
     generation INT DEFAULT 1,
     birth_year INT,
     death_year INT,
+    birth_date DATE,
+    death_date DATE,
     is_living BOOLEAN DEFAULT true,
     is_privacy_filtered BOOLEAN DEFAULT false,
     is_patrilineal BOOLEAN DEFAULT true,
@@ -29,6 +31,8 @@ ALTER TABLE people ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS facebook TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS current_address TEXT;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS birth_date DATE;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS death_date DATE;
 
 CREATE TABLE IF NOT EXISTS families (
     handle TEXT PRIMARY KEY,
@@ -56,6 +60,168 @@ FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 DROP TRIGGER IF EXISTS families_updated_at ON families;
 CREATE TRIGGER families_updated_at BEFORE UPDATE ON families
 FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+
+-- ╔══════════════════════════════════════════════════════════╗
+-- ║  1.5 KINSHIP RELATIONSHIP FUNCTION                    ║
+-- ╚══════════════════════════════════════════════════════════╝
+
+-- Function to get relationship between two people
+CREATE OR REPLACE FUNCTION get_kinship_relationship(
+    p_person1_handle TEXT,
+    p_person2_handle TEXT
+)
+RETURNS TEXT AS $$
+DECLARE
+    person1 RECORD;
+    person2 RECORD;
+    gen_diff INT;
+    p1_father TEXT;
+    p1_mother TEXT;
+    p2_father TEXT;
+    p2_mother TEXT;
+    p1_paternal_grandpa TEXT;
+    p1_maternal_grandpa TEXT;
+    p2_paternal_grandpa TEXT;
+    p2_maternal_grandpa TEXT;
+    common_grandpa TEXT;
+    distance_to_common INT;
+BEGIN
+    -- Get both people's info
+    SELECT * INTO person1 FROM people WHERE handle = p_person1_handle LIMIT 1;
+    SELECT * INTO person2 FROM people WHERE handle = p_person2_handle LIMIT 1;
+
+    IF person1 IS NULL OR person2 IS NULL THEN
+        RETURN 'Không xác định';
+    END IF;
+
+    -- If same person
+    IF p_person1_handle = p_person2_handle THEN
+        RETURN 'Chính mình';
+    END IF;
+
+    -- Get direct parents
+    SELECT father_handle, mother_handle INTO p1_father, p1_mother
+    FROM families WHERE children @> ARRAY[p_person1_handle] LIMIT 1;
+    
+    SELECT father_handle, mother_handle INTO p2_father, p2_mother
+    FROM families WHERE children @> ARRAY[p_person2_handle] LIMIT 1;
+
+    gen_diff := person2.generation - person1.generation;
+
+    -- ===== DIRECT PARENT-CHILD RELATIONSHIP =====
+    IF gen_diff = -1 AND (p1_father = p_person2_handle OR p1_mother = p_person2_handle) THEN
+        IF person2.gender = 1 THEN RETURN 'Cha'; ELSE RETURN 'Mẹ'; END IF;
+    END IF;
+
+    IF gen_diff = 1 AND (p2_father = p_person1_handle OR p2_mother = p_person1_handle) THEN
+        IF person2.gender = 1 THEN RETURN 'Con trai'; ELSE RETURN 'Con gái'; END IF;
+    END IF;
+
+    -- ===== NEPHEW/NIECE: person1 is uncle/aunt, person2 is their niece/nephew =====
+    -- Check if person2's parent is a sibling of person1 (same generation, same parents as person1)
+    IF gen_diff = 1 AND p2_father IS NOT NULL THEN
+        -- Check if p2_father is sibling of person1
+        SELECT father_handle, mother_handle INTO p1_paternal_grandpa, p1_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p_person1_handle] LIMIT 1;
+        
+        SELECT father_handle, mother_handle INTO p2_paternal_grandpa, p2_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p2_father] LIMIT 1;
+        
+        -- If they share the same parent and are different people
+        IF p1_paternal_grandpa IS NOT NULL AND p1_paternal_grandpa = p2_paternal_grandpa 
+           AND p_person1_handle != p2_father THEN
+            IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+        END IF;
+    END IF;
+
+    IF gen_diff = 1 AND p2_mother IS NOT NULL THEN
+        -- Check if p2_mother is sibling of person1
+        SELECT father_handle, mother_handle INTO p1_paternal_grandpa, p1_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p_person1_handle] LIMIT 1;
+        
+        SELECT father_handle, mother_handle INTO p2_paternal_grandpa, p2_maternal_grandpa
+        FROM families WHERE children @> ARRAY[p2_mother] LIMIT 1;
+        
+        -- If they share the same parent and are different people
+        IF p1_paternal_grandpa IS NOT NULL AND p1_paternal_grandpa = p2_paternal_grandpa 
+           AND p_person1_handle != p2_mother THEN
+            IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+        END IF;
+    END IF;
+
+    -- ===== DIRECT SIBLINGS (same parents) =====
+    IF gen_diff = 0 THEN
+        IF (p1_father IS NOT NULL AND p1_father != '' AND p1_father = p2_father)
+           OR (p1_mother IS NOT NULL AND p1_mother != '' AND p1_mother = p2_mother) THEN
+            IF person2.gender = 1 THEN RETURN 'Anh/Em trai'; ELSE RETURN 'Chị/Em gái'; END IF;
+        END IF;
+    END IF;
+
+    -- ===== UNCLE/AUNT RELATIONSHIP (person2 is sibling of person1's parent) =====
+    IF gen_diff = -1 AND p1_father IS NOT NULL THEN
+        -- Check if person2 is sibling of father
+        SELECT father_handle INTO p1_paternal_grandpa FROM families 
+        WHERE children @> ARRAY[p1_father] LIMIT 1;
+        
+        IF p1_paternal_grandpa IS NOT NULL THEN
+            SELECT father_handle INTO p2_paternal_grandpa FROM families 
+            WHERE children @> ARRAY[p_person2_handle] LIMIT 1;
+            
+            IF p1_paternal_grandpa = p2_paternal_grandpa THEN
+                IF person2.gender = 1 THEN RETURN 'Chú'; ELSE RETURN 'Cô'; END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    IF gen_diff = -1 AND p1_mother IS NOT NULL THEN
+        -- Check if person2 is sibling of mother
+        SELECT father_handle INTO p1_maternal_grandpa FROM families 
+        WHERE children @> ARRAY[p1_mother] LIMIT 1;
+        
+        IF p1_maternal_grandpa IS NOT NULL THEN
+            SELECT father_handle INTO p2_paternal_grandpa FROM families 
+            WHERE children @> ARRAY[p_person2_handle] LIMIT 1;
+            
+            IF p1_maternal_grandpa = p2_paternal_grandpa THEN
+                IF person2.gender = 1 THEN RETURN 'Chú'; ELSE RETURN 'Cô'; END IF;
+            END IF;
+        END IF;
+    END IF;
+
+    -- ===== COUSIN RELATIONSHIP =====
+    IF gen_diff = 0 THEN
+        IF person2.gender = 1 THEN RETURN 'Anh/Em họ trai'; ELSE RETURN 'Anh/Em họ gái'; END IF;
+    END IF;
+
+    -- ===== GRANDPARENT RELATIONSHIPS =====
+    IF gen_diff = -2 THEN
+        IF person2.gender = 1 THEN RETURN 'Ông'; ELSE RETURN 'Bà'; END IF;
+    END IF;
+
+    -- ===== GRANDCHILD RELATIONSHIPS =====
+    IF gen_diff = 2 THEN
+        IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+    END IF;
+
+    -- ===== OTHER ANCESTORS =====
+    IF gen_diff < -2 THEN
+        IF gen_diff = -3 THEN RETURN 'Cụ';
+        ELSIF gen_diff = -4 THEN RETURN 'Cao tổ';
+        ELSIF gen_diff <= -5 THEN RETURN 'Tổ tiên';
+        END IF;
+    END IF;
+
+    -- ===== OTHER DESCENDANTS =====
+    IF gen_diff > 2 THEN
+        IF gen_diff = 3 THEN RETURN 'Chắt';
+        ELSIF gen_diff = 4 THEN RETURN 'Chút';
+        ELSIF gen_diff >= 5 THEN RETURN 'Hậu duệ';
+        END IF;
+    END IF;
+
+    RETURN 'Quan hệ khác';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
 -- ╔══════════════════════════════════════════════════════════╗
@@ -127,6 +293,53 @@ ALTER TABLE families ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.user
 -- Indexes for owner_id
 CREATE INDEX IF NOT EXISTS idx_people_owner ON people(owner_id);
 CREATE INDEX IF NOT EXISTS idx_families_owner ON families(owner_id);
+
+-- Helper function to check if someone is a family member of another person
+CREATE OR REPLACE FUNCTION is_family_member(p_person_handle TEXT, p_target_person_handle TEXT)
+RETURNS BOOLEAN AS $$
+DECLARE
+    person_record RECORD;
+    target_record RECORD;
+    parent_family TEXT;
+    person_family TEXT;
+BEGIN
+    -- Get both people
+    SELECT * INTO person_record FROM people WHERE handle = p_person_handle;
+    SELECT * INTO target_record FROM people WHERE handle = p_target_person_handle;
+    
+    IF person_record IS NULL OR target_record IS NULL THEN
+        RETURN FALSE;
+    END IF;
+    
+    -- Check if same person
+    IF p_person_handle = p_target_person_handle THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check if target is in person's families list (direct family)
+    IF target_record.families && person_record.families THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check if they share parent families (siblings)
+    IF person_record.parent_families && target_record.parent_families THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- Check if one is parent of the other (parent_families check)
+    -- If target is in person's parent families, target is a parent
+    IF person_record.parent_families && target_record.families THEN
+        RETURN TRUE;
+    END IF;
+    
+    -- If person is in target's parent families, person is a parent
+    IF target_record.parent_families && person_record.families THEN
+        RETURN TRUE;
+    END IF;
+    
+    RETURN FALSE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
 
 -- Row Level Security: Enable RLS
 ALTER TABLE people ENABLE ROW LEVEL SECURITY;
@@ -348,6 +561,35 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+-- Function to generate family member account credentials
+CREATE OR REPLACE FUNCTION generate_family_account_credentials(p_display_name TEXT)
+RETURNS JSON AS $$
+DECLARE
+    last_name TEXT;
+    random_num TEXT;
+    username TEXT;
+    email TEXT;
+BEGIN
+    -- Extract last name (last word from display_name)
+    last_name := TRIM(REGEXP_SUBSTR(p_display_name, '[^ ]+$'));
+    
+    -- Generate random 3-digit number
+    random_num := LPAD((FLOOR(RANDOM() * 1000)::INTEGER)::TEXT, 3, '0');
+    
+    -- Create username from display_name
+    username := REGEXP_REPLACE(p_display_name, '\s+', '_', 'g');
+    
+    -- Create email: lastname + random number + @gmail.com
+    email := LOWER(last_name || random_num) || '@gmail.com';
+    
+    RETURN json_build_object(
+        'username', username,
+        'email', email,
+        'password', '123456'
+    );
+END;
+$$ LANGUAGE plpgsql;
+
 ALTER TABLE people 
 ALTER COLUMN handle SET DEFAULT generate_person_handle();
 
@@ -434,26 +676,33 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Drop old function overload without p_create_account parameter to avoid ambiguity
+DROP FUNCTION IF EXISTS public.add_spouse(TEXT, TEXT, INTEGER, INTEGER, DATE, INTEGER, DATE, BOOLEAN, BOOLEAN, TEXT, TEXT, TEXT, TEXT, UUID) CASCADE;
+
 -- Function to add a spouse (người ngoại tộc) to an existing person
 CREATE OR REPLACE FUNCTION add_spouse(
     p_person_handle TEXT,
     p_spouse_name TEXT,
     p_spouse_gender INTEGER,
     p_spouse_birth_year INTEGER DEFAULT NULL,
+    p_spouse_birth_date DATE DEFAULT NULL,
     p_spouse_death_year INTEGER DEFAULT NULL,
+    p_spouse_death_date DATE DEFAULT NULL,
     p_spouse_is_living BOOLEAN DEFAULT true,
     p_spouse_is_patrilineal BOOLEAN DEFAULT false,
     p_spouse_image_url TEXT DEFAULT NULL,
     p_spouse_phone TEXT DEFAULT NULL,
     p_spouse_facebook TEXT DEFAULT NULL,
     p_spouse_current_address TEXT DEFAULT NULL,
+    p_create_account BOOLEAN DEFAULT false,
     p_owner_id UUID DEFAULT auth.uid()
 )
-RETURNS TEXT AS $$
+RETURNS JSON AS $$
 DECLARE
     spouse_handle TEXT;
     person_record RECORD;
     family_handle TEXT;
+    account_creds JSON;
 BEGIN
     -- Check if person exists and user has access
     SELECT * INTO person_record 
@@ -469,13 +718,18 @@ BEGIN
     -- Generate spouse handle
     SELECT generate_person_handle() INTO spouse_handle;
     
+    -- Generate account credentials if requested
+    IF p_create_account THEN
+        SELECT generate_family_account_credentials(p_spouse_name) INTO account_creds;
+    END IF;
+    
     -- Insert spouse
     INSERT INTO people (
-        handle, display_name, gender, generation, birth_year, death_year, 
+        handle, display_name, gender, generation, birth_year, birth_date, death_year, death_date, 
         is_living, is_privacy_filtered, is_patrilineal, image_url, phone, facebook, current_address, owner_id
     ) VALUES (
         spouse_handle, p_spouse_name, p_spouse_gender, person_record.generation, 
-        p_spouse_birth_year, p_spouse_death_year, p_spouse_is_living, 
+        p_spouse_birth_year, p_spouse_birth_date, p_spouse_death_year, p_spouse_death_date, p_spouse_is_living, 
         false, p_spouse_is_patrilineal, p_spouse_image_url, p_spouse_phone, p_spouse_facebook, p_spouse_current_address, person_record.owner_id
     );
     
@@ -524,9 +778,19 @@ BEGIN
         WHERE handle = spouse_handle;
     END IF;
     
-    RETURN spouse_handle;
+    -- Return result with person handle and account credentials if created
+    RETURN json_build_object(
+        'person_handle', spouse_handle,
+        'account', account_creds,
+        'family_handle', family_handle,
+        'person_name', p_spouse_name,
+        'relation', 'vợ/chồng'
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Drop old function overload without p_create_account parameter to avoid ambiguity
+DROP FUNCTION IF EXISTS public.add_child(TEXT, TEXT, INTEGER, INTEGER, DATE, INTEGER, DATE, BOOLEAN, TEXT, TEXT, TEXT, TEXT, UUID) CASCADE;
 
 -- Function to add a child to a family
 CREATE OR REPLACE FUNCTION add_child(
@@ -534,20 +798,25 @@ CREATE OR REPLACE FUNCTION add_child(
     p_child_name TEXT,
     p_child_gender INTEGER DEFAULT 1,
     p_child_birth_year INTEGER DEFAULT NULL,
+    p_child_birth_date DATE DEFAULT NULL,
     p_child_death_year INTEGER DEFAULT NULL,
+    p_child_death_date DATE DEFAULT NULL,
     p_child_is_living BOOLEAN DEFAULT true,
     p_child_image_url TEXT DEFAULT NULL,
     p_child_phone TEXT DEFAULT NULL,
     p_child_facebook TEXT DEFAULT NULL,
     p_child_current_address TEXT DEFAULT NULL,
+    p_create_account BOOLEAN DEFAULT false,
     p_owner_id UUID DEFAULT auth.uid()
 )
-RETURNS TEXT AS $$
+RETURNS JSON AS $$
 DECLARE
     child_handle TEXT;
     family_record RECORD;
     parent_generation INTEGER;
     parent_owner UUID;
+    account_creds JSON;
+    parent_names TEXT;
 BEGIN
     -- Check if family exists and user has access
     SELECT * INTO family_record 
@@ -561,21 +830,33 @@ BEGIN
         RAISE EXCEPTION 'Family not found or access denied';
     END IF;
     
-    -- Get parent generation
+    -- Get parent generation and names for description
     SELECT generation INTO parent_generation 
     FROM people 
     WHERE handle = COALESCE(family_record.father_handle, family_record.mother_handle);
     
+    -- Get parent names for account description
+    SELECT COALESCE(father.display_name || ' & ' || mother.display_name, father.display_name, mother.display_name)
+    INTO parent_names
+    FROM people father
+    LEFT JOIN people mother ON mother.handle = family_record.mother_handle
+    WHERE father.handle = family_record.father_handle;
+    
     -- Generate child handle
     SELECT generate_person_handle() INTO child_handle;
     
+    -- Generate account credentials if requested
+    IF p_create_account THEN
+        SELECT generate_family_account_credentials(p_child_name) INTO account_creds;
+    END IF;
+    
     -- Insert child
     INSERT INTO people (
-        handle, display_name, gender, generation, birth_year, death_year, 
+        handle, display_name, gender, generation, birth_year, birth_date, death_year, death_date, 
         is_living, is_privacy_filtered, is_patrilineal, parent_families, image_url, phone, facebook, current_address, owner_id
     ) VALUES (
         child_handle, p_child_name, p_child_gender, parent_generation + 1, 
-        p_child_birth_year, p_child_death_year, p_child_is_living, 
+        p_child_birth_year, p_child_birth_date, p_child_death_year, p_child_death_date, p_child_is_living, 
         false, true, ARRAY[p_family_handle], p_child_image_url, p_child_phone, p_child_facebook, p_child_current_address, family_record.owner_id
     );
     
@@ -584,7 +865,15 @@ BEGIN
     SET children = children || ARRAY[child_handle] 
     WHERE handle = p_family_handle;
     
-    RETURN child_handle;
+    -- Return result with person handle and account credentials if created
+    RETURN json_build_object(
+        'person_handle', child_handle,
+        'account', account_creds,
+        'family_handle', p_family_handle,
+        'person_name', p_child_name,
+        'parent_names', parent_names,
+        'relation', 'con'
+    );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -682,6 +971,7 @@ DECLARE
     plan_record RECORD;
     expires_at TIMESTAMPTZ;
     subscription_id UUID;
+    updated_rows INTEGER;
 BEGIN
     -- Check if user can use this plan
     IF NOT can_use_plan(p_user_id, p_plan_id) THEN
@@ -699,8 +989,18 @@ BEGIN
     VALUES (p_user_id, p_plan_id, expires_at)
     RETURNING id INTO subscription_id;
 
-    -- Update user role
+    -- Update user role - bypass RLS for this system operation
+    SET LOCAL row_security = OFF;
+    
     UPDATE profiles SET role = plan_record.to_role WHERE id = p_user_id;
+    GET DIAGNOSTICS updated_rows = ROW_COUNT;
+    
+    RESET row_security;
+
+    -- Check if update actually succeeded
+    IF updated_rows = 0 THEN
+        RETURN 'Error: Failed to update user role';
+    END IF;
 
     -- Create notification for role upgrade
     INSERT INTO notifications (user_id, type, title, message, link_url)
@@ -723,7 +1023,7 @@ BEGIN
 
     RETURN 'Success';
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Function to auto-downgrade expired subscriptions
 CREATE OR REPLACE FUNCTION auto_downgrade_expired_subscriptions()
@@ -739,8 +1039,12 @@ BEGIN
         JOIN plans p ON s.plan_id = p.id
         WHERE s.status = 'active' AND s.expires_at < now()
     LOOP
-        -- Downgrade user role
+        -- Downgrade user role - bypass RLS for this system operation
+        SET LOCAL row_security = OFF;
+        
         UPDATE profiles SET role = expired_sub.from_role WHERE id = expired_sub.user_id;
+        
+        RESET row_security;
 
         -- Create expiry notification
         INSERT INTO notifications (user_id, type, title, message, link_url)
@@ -759,7 +1063,7 @@ BEGIN
 
     RETURN downgrade_count;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 -- Create a trigger to auto-downgrade on subscription updates
 CREATE OR REPLACE FUNCTION send_subscription_expiry_reminders()
@@ -803,12 +1107,17 @@ RETURNS TRIGGER AS $$
 BEGIN
     -- If subscription just expired, downgrade user
     IF NEW.status = 'active' AND NEW.expires_at < now() AND (OLD.status != 'active' OR OLD.expires_at >= now()) THEN
+        -- Bypass RLS for this system operation
+        SET LOCAL row_security = OFF;
+        
         UPDATE profiles SET role = (SELECT from_role FROM plans WHERE id = NEW.plan_id) WHERE id = NEW.user_id;
+        
+        RESET row_security;
         NEW.status := 'expired';
     END IF;
     RETURN NEW;
 END;
-$$ LANGUAGE plpgsql;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
 
 CREATE TRIGGER subscription_expiry_trigger
     BEFORE UPDATE ON subscriptions

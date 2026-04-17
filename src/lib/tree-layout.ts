@@ -17,6 +17,8 @@ export interface TreeNode {
   generation: number;
   birthYear?: number;
   deathYear?: number;
+  birthDate?: string; // ISO date format
+  deathDate?: string; // ISO date format
   isLiving: boolean;
   isPrivacyFiltered: boolean;
   isPatrilineal: boolean;
@@ -146,6 +148,32 @@ function mergeContours(
   return merged;
 }
 
+// ═══ Helper: Sort children by birth date ═══
+function sortChildrenByBirthDate(
+  childHandles: string[],
+  personMap: Map<string, TreeNode>,
+): string[] {
+  return [...childHandles].sort((aHandle, bHandle) => {
+    const a = personMap.get(aHandle);
+    const b = personMap.get(bHandle);
+
+    if (!a || !b) return 0;
+
+    // If both have birth_date, compare dates
+    if (a.birthDate && b.birthDate) {
+      return a.birthDate.localeCompare(b.birthDate);
+    }
+
+    // If both have birth_year, compare years
+    if (a.birthYear && b.birthYear) {
+      return a.birthYear - b.birthYear;
+    }
+
+    // Keep original order if not enough data
+    return childHandles.indexOf(aHandle) - childHandles.indexOf(bHandle);
+  });
+}
+
 // ═══ Step 1: Build subtree recursively, compute widths bottom-up ═══
 //
 // STRICT RULES:
@@ -177,7 +205,13 @@ function buildSubtree(
 
   const children: ChildItem[] = [];
 
-  for (const childHandle of family.children) {
+  // Sort children by birth date before processing
+  const sortedChildHandles = sortChildrenByBirthDate(
+    family.children,
+    personMap,
+  );
+
+  for (const childHandle of sortedChildHandles) {
     const child = personMap.get(childHandle);
     if (!child) continue;
 

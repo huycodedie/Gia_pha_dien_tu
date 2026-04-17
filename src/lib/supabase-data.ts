@@ -95,6 +95,8 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
     gender: row.gender as number,
     birthYear: row.birth_year as number | undefined,
     deathYear: row.death_year as number | undefined,
+    birthDate: row.birth_date as string | undefined,
+    deathDate: row.death_date as string | undefined,
     generation: row.generation as number,
     isLiving: row.is_living as boolean,
     isPrivacyFiltered: row.is_privacy_filtered as boolean,
@@ -129,7 +131,7 @@ export async function fetchPeople(): Promise<TreeNode[]> {
   let query = supabase
     .from("people")
     .select(
-      "handle, display_name, gender, birth_year, death_year, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families, owner_id, image_url, phone, facebook, current_address",
+      "handle, display_name, gender, birth_year, death_year, birth_date, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families, owner_id, image_url, phone, facebook, current_address",
     )
     .order("generation")
     .order("handle");
@@ -452,8 +454,11 @@ export async function updatePerson(
   handle: string,
   fields: {
     displayName?: string;
+    gender?: number | null;
     birthYear?: number | null;
     deathYear?: number | null;
+    birthDate?: string | null;
+    deathDate?: string | null;
     isLiving?: boolean;
     isPrivacyFiltered?: boolean;
     imageUrl?: string | null;
@@ -466,8 +471,11 @@ export async function updatePerson(
   const dbFields: Record<string, unknown> = {};
   if (fields.displayName !== undefined)
     dbFields.display_name = fields.displayName;
+  if (fields.gender !== undefined) dbFields.gender = fields.gender;
   if (fields.birthYear !== undefined) dbFields.birth_year = fields.birthYear;
   if (fields.deathYear !== undefined) dbFields.death_year = fields.deathYear;
+  if (fields.birthDate !== undefined) dbFields.birth_date = fields.birthDate;
+  if (fields.deathDate !== undefined) dbFields.death_date = fields.deathDate;
   if (fields.isLiving !== undefined) dbFields.is_living = fields.isLiving;
   if (fields.isPrivacyFiltered !== undefined)
     dbFields.is_privacy_filtered = fields.isPrivacyFiltered;
@@ -520,7 +528,9 @@ export async function addSpouse(
     displayName: string;
     gender: number;
     birthYear?: number | null;
+    birthDate?: string | null;
     deathYear?: number | null;
+    deathDate?: string | null;
     isLiving?: boolean;
     isPatrilineal?: boolean;
     imageUrl?: string;
@@ -580,7 +590,9 @@ export async function addSpouse(
     p_spouse_name: spouse.displayName,
     p_spouse_gender: spouse.gender,
     p_spouse_birth_year: spouse.birthYear || null,
+    p_spouse_birth_date: spouse.birthDate || null,
     p_spouse_death_year: spouse.deathYear || null,
+    p_spouse_death_date: spouse.deathDate || null,
     p_spouse_is_living: spouse.isLiving ?? true,
     p_spouse_is_patrilineal: spouse.isPatrilineal ?? false,
     p_spouse_image_url: spouse.imageUrl || null,
@@ -603,7 +615,9 @@ export async function addChild(
     displayName: string;
     gender: number;
     birthYear?: number | null;
+    birthDate?: string | null;
     deathYear?: number | null;
+    deathDate?: string | null;
     isLiving?: boolean;
     imageUrl?: string;
     phone?: string;
@@ -662,7 +676,9 @@ export async function addChild(
     p_child_name: child.displayName,
     p_child_gender: child.gender,
     p_child_birth_year: child.birthYear || null,
+    p_child_birth_date: child.birthDate || null,
     p_child_death_year: child.deathYear || null,
+    p_child_death_date: child.deathDate || null,
     p_child_is_living: child.isLiving ?? true,
     p_child_image_url: child.imageUrl || null,
     p_child_phone: child.phone || null,
@@ -985,4 +1001,24 @@ export async function removeGuest(
   }
 
   return { error: null };
+}
+
+// ═══ KINSHIP & GENEALOGICAL FUNCTIONS ═══
+
+/** Get kinship relationship between two people */
+export async function getKinshipRelationship(
+  person1Handle: string,
+  person2Handle: string,
+): Promise<{ relationship: string | null; error: string | null }> {
+  const { data, error } = await supabase.rpc("get_kinship_relationship", {
+    p_person1_handle: person1Handle,
+    p_person2_handle: person2Handle,
+  });
+
+  if (error) {
+    console.error("Failed to get kinship relationship:", error.message);
+    return { relationship: null, error: error.message };
+  }
+
+  return { relationship: data || null, error: null };
 }

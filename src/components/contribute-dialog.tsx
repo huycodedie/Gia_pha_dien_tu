@@ -9,6 +9,7 @@ import {
   Heart,
   Baby,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { supabase } from "@/lib/supabase";
@@ -17,6 +18,29 @@ import { addSpouse, addChild } from "@/lib/supabase-data";
 import type { TreeNode } from "@/lib/tree-layout";
 
 const CONTRIBUTION_FIELDS = [
+  {
+    key: "gender",
+    label: "Giới tính",
+    type: "select",
+    options: [
+      { label: "Nam", value: "1" },
+      { label: "Nữ", value: "2" },
+      { label: "Không rõ", value: "0" },
+    ],
+    placeholder: "Chọn giới tính...",
+  },
+  {
+    key: "birth_date",
+    label: "Ngày/Tháng/Năm sinh",
+    type: "date",
+    placeholder: "YYYY-MM-DD",
+  },
+  {
+    key: "death_date",
+    label: "Ngày/Tháng/Năm mất",
+    type: "date",
+    placeholder: "YYYY-MM-DD",
+  },
   {
     key: "birth_year",
     label: "Năm sinh",
@@ -207,6 +231,19 @@ export function ContributeDialog({
                   className="w-full rounded-lg border px-3 py-2 text-sm bg-background min-h-[80px] resize-y"
                   rows={3}
                 />
+              ) : fieldInfo.type === "select" && "options" in fieldInfo ? (
+                <select
+                  value={newValue}
+                  onChange={(e) => setNewValue(e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2 text-sm bg-background"
+                >
+                  <option value="">{fieldInfo.placeholder}</option>
+                  {fieldInfo.options?.map((opt) => (
+                    <option key={opt.value} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </select>
               ) : (
                 <Input
                   type={fieldInfo.type}
@@ -271,7 +308,11 @@ export function AddSpouseDialog({
   const [isMale, setIsMale] = useState(false);
   const [isFemale, setIsFemale] = useState(person.gender === 1);
   const [birthYear, setBirthYear] = useState("");
+  const [birthMonth, setBirthMonth] = useState("");
+  const [birthDay, setBirthDay] = useState("");
   const [deathYear, setDeathYear] = useState("");
+  const [deathMonth, setDeathMonth] = useState("");
+  const [deathDay, setDeathDay] = useState("");
   const [isLiving, setIsLiving] = useState(true);
   const [isPatrilineal, setIsPatrilineal] = useState(false);
   const [imageUrl, setImageUrl] = useState("");
@@ -285,22 +326,41 @@ export function AddSpouseDialog({
 
   const handleSubmit = async () => {
     if (!displayName.trim()) {
-      setError("Vui lòng nhập họ tên");
+      toast.error("Vui lòng nhập họ tên");
+      return;
+    }
+    if (gender === 0) {
+      toast.error("Vui lòng chọn giới tính");
+      return;
+    }
+    if (!birthYear || !birthMonth || !birthDay) {
+      toast.error("Vui lòng nhập đầy đủ ngày tháng năm sinh");
       return;
     }
     if (!isLoggedIn) {
-      setError("Bạn cần đăng nhập để thêm người");
+      toast.error("Bạn cần đăng nhập để thêm người");
       return;
     }
 
     setSending(true);
     setError("");
 
+    const birthDateStr =
+      birthYear && birthMonth && birthDay
+        ? `${birthYear}-${birthMonth.padStart(2, "0")}-${birthDay.padStart(2, "0")}`
+        : undefined;
+    const deathDateStr =
+      deathYear && deathMonth && deathDay
+        ? `${deathYear}-${deathMonth.padStart(2, "0")}-${deathDay.padStart(2, "0")}`
+        : undefined;
+
     const result = await addSpouse(person.handle, {
       displayName: displayName.trim(),
       gender,
       birthYear: birthYear ? parseInt(birthYear) : undefined,
+      birthDate: birthDateStr,
       deathYear: deathYear ? parseInt(deathYear) : undefined,
+      deathDate: deathDateStr,
       isLiving,
       isPatrilineal,
       imageUrl: imageUrl.trim() || undefined,
@@ -312,8 +372,10 @@ export function AddSpouseDialog({
     setSending(false);
 
     if (result.error) {
+      toast.error(result.error);
       setError(result.error);
     } else {
+      toast.success("Thêm vợ/chồng thành công!");
       onSuccess();
       onClose();
     }
@@ -325,10 +387,10 @@ export function AddSpouseDialog({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-[420px] max-w-[95vw] animate-in zoom-in-95 fade-in duration-200"
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-[420px] max-w-[95vw] max-h-[85vh] flex flex-col animate-in zoom-in-95 fade-in duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
           <div className="flex items-center gap-2">
             <Heart className="w-5 h-5 text-red-500" />
             <div>
@@ -343,7 +405,7 @@ export function AddSpouseDialog({
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
           {!isLoggedIn && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400">
               ⚠️ Bạn cần{" "}
@@ -383,7 +445,9 @@ export function AddSpouseDialog({
                     }}
                     className="rounded"
                   />
-                  <label htmlFor="male-spouse" className="text-sm">Nam</label>
+                  <label htmlFor="male-spouse" className="text-sm">
+                    Nam
+                  </label>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -396,36 +460,101 @@ export function AddSpouseDialog({
                     }}
                     className="rounded"
                   />
-                  <label htmlFor="female-spouse" className="text-sm">Nữ</label>
+                  <label htmlFor="female-spouse" className="text-sm">
+                    Nữ
+                  </label>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                  Năm sinh
-                </label>
-                <Input
-                  type="number"
-                  value={birthYear}
-                  onChange={(e) => setBirthYear(e.target.value)}
-                  placeholder="1950"
-                  className="text-sm"
-                />
+            <div>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                Ngày sinh
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Năm</label>
+                  <Input
+                    type="number"
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    placeholder="YYYY"
+                    className="text-sm"
+                    min="1800"
+                    max="2100"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Tháng</label>
+                  <Input
+                    type="number"
+                    value={birthMonth}
+                    onChange={(e) => setBirthMonth(e.target.value)}
+                    placeholder="MM"
+                    className="text-sm"
+                    min="1"
+                    max="12"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Ngày</label>
+                  <Input
+                    type="number"
+                    value={birthDay}
+                    onChange={(e) => setBirthDay(e.target.value)}
+                    placeholder="DD"
+                    className="text-sm"
+                    min="1"
+                    max="31"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                  Năm mất
-                </label>
-                <Input
-                  type="number"
-                  value={deathYear}
-                  onChange={(e) => setDeathYear(e.target.value)}
-                  placeholder="2020"
-                  className="text-sm"
-                  disabled={isLiving}
-                />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                Ngày mất
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Năm</label>
+                  <Input
+                    type="number"
+                    value={deathYear}
+                    onChange={(e) => setDeathYear(e.target.value)}
+                    placeholder="YYYY"
+                    className="text-sm"
+                    min="1800"
+                    max="2100"
+                    disabled={isLiving}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Tháng</label>
+                  <Input
+                    type="number"
+                    value={deathMonth}
+                    onChange={(e) => setDeathMonth(e.target.value)}
+                    placeholder="MM"
+                    className="text-sm"
+                    min="1"
+                    max="12"
+                    disabled={isLiving}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Ngày</label>
+                  <Input
+                    type="number"
+                    value={deathDay}
+                    onChange={(e) => setDeathDay(e.target.value)}
+                    placeholder="DD"
+                    className="text-sm"
+                    min="1"
+                    max="31"
+                    disabled={isLiving}
+                  />
+                </div>
               </div>
             </div>
 
@@ -509,7 +638,9 @@ export function AddSpouseDialog({
               />
             </div>
           </div>
+        </div>
 
+        <div className="border-t px-5 py-3 flex-shrink-0 space-y-3">
           {error && (
             <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-700 dark:text-red-400">
               {error}
@@ -552,7 +683,11 @@ export function AddChildDialog({
   const [isMale, setIsMale] = useState(false);
   const [isFemale, setIsFemale] = useState(false);
   const [birthYear, setBirthYear] = useState("");
+  const [birthMonth, setBirthMonth] = useState("");
+  const [birthDay, setBirthDay] = useState("");
   const [deathYear, setDeathYear] = useState("");
+  const [deathMonth, setDeathMonth] = useState("");
+  const [deathDay, setDeathDay] = useState("");
   const [isLiving, setIsLiving] = useState(true);
   const [imageUrl, setImageUrl] = useState("");
   const [phone, setPhone] = useState("");
@@ -565,22 +700,41 @@ export function AddChildDialog({
 
   const handleSubmit = async () => {
     if (!displayName.trim()) {
-      setError("Vui lòng nhập họ tên");
+      toast.error("Vui lòng nhập họ tên");
+      return;
+    }
+    if (gender === 0) {
+      toast.error("Vui lòng chọn giới tính");
+      return;
+    }
+    if (!birthYear || !birthMonth || !birthDay) {
+      toast.error("Vui lòng nhập đầy đủ ngày tháng năm sinh");
       return;
     }
     if (!isLoggedIn) {
-      setError("Bạn cần đăng nhập để thêm người");
+      toast.error("Bạn cần đăng nhập để thêm người");
       return;
     }
 
     setSending(true);
     setError("");
 
+    const birthDateStr =
+      birthYear && birthMonth && birthDay
+        ? `${birthYear}-${birthMonth.padStart(2, "0")}-${birthDay.padStart(2, "0")}`
+        : undefined;
+    const deathDateStr =
+      deathYear && deathMonth && deathDay
+        ? `${deathYear}-${deathMonth.padStart(2, "0")}-${deathDay.padStart(2, "0")}`
+        : undefined;
+
     const result = await addChild(familyHandle, {
       displayName: displayName.trim(),
       gender,
       birthYear: birthYear ? parseInt(birthYear) : undefined,
+      birthDate: birthDateStr,
       deathYear: deathYear ? parseInt(deathYear) : undefined,
+      deathDate: deathDateStr,
       isLiving,
       imageUrl: imageUrl.trim() || undefined,
       phone: phone.trim() || undefined,
@@ -591,8 +745,10 @@ export function AddChildDialog({
     setSending(false);
 
     if (result.error) {
+      toast.error(result.error);
       setError(result.error);
     } else {
+      toast.success("Thêm con thành công!");
       onSuccess();
       onClose();
     }
@@ -604,10 +760,10 @@ export function AddChildDialog({
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-[420px] max-w-[95vw] animate-in zoom-in-95 fade-in duration-200"
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-[420px] max-w-[95vw] max-h-[85vh] flex flex-col animate-in zoom-in-95 fade-in duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center justify-between px-5 py-4 border-b">
+        <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
           <div className="flex items-center gap-2">
             <Baby className="w-5 h-5 text-blue-500" />
             <div>
@@ -620,7 +776,7 @@ export function AddChildDialog({
           </button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="overflow-y-auto flex-1 px-5 py-4 space-y-4">
           {!isLoggedIn && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-700 dark:text-amber-400">
               ⚠️ Bạn cần{" "}
@@ -660,7 +816,9 @@ export function AddChildDialog({
                     }}
                     className="rounded"
                   />
-                  <label htmlFor="male-child" className="text-sm">Nam</label>
+                  <label htmlFor="male-child" className="text-sm">
+                    Nam
+                  </label>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -673,36 +831,101 @@ export function AddChildDialog({
                     }}
                     className="rounded"
                   />
-                  <label htmlFor="female-child" className="text-sm">Nữ</label>
+                  <label htmlFor="female-child" className="text-sm">
+                    Nữ
+                  </label>
                 </div>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                  Năm sinh
-                </label>
-                <Input
-                  type="number"
-                  value={birthYear}
-                  onChange={(e) => setBirthYear(e.target.value)}
-                  placeholder="2000"
-                  className="text-sm"
-                />
+            <div>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                Ngày sinh
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Năm</label>
+                  <Input
+                    type="number"
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    placeholder="YYYY"
+                    className="text-sm"
+                    min="1800"
+                    max="2100"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Tháng</label>
+                  <Input
+                    type="number"
+                    value={birthMonth}
+                    onChange={(e) => setBirthMonth(e.target.value)}
+                    placeholder="MM"
+                    className="text-sm"
+                    min="1"
+                    max="12"
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Ngày</label>
+                  <Input
+                    type="number"
+                    value={birthDay}
+                    onChange={(e) => setBirthDay(e.target.value)}
+                    placeholder="DD"
+                    className="text-sm"
+                    min="1"
+                    max="31"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                  Năm mất
-                </label>
-                <Input
-                  type="number"
-                  value={deathYear}
-                  onChange={(e) => setDeathYear(e.target.value)}
-                  placeholder="2020"
-                  className="text-sm"
-                  disabled={isLiving}
-                />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                Ngày mất
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Năm</label>
+                  <Input
+                    type="number"
+                    value={deathYear}
+                    onChange={(e) => setDeathYear(e.target.value)}
+                    placeholder="YYYY"
+                    className="text-sm"
+                    min="1800"
+                    max="2100"
+                    disabled={isLiving}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Tháng</label>
+                  <Input
+                    type="number"
+                    value={deathMonth}
+                    onChange={(e) => setDeathMonth(e.target.value)}
+                    placeholder="MM"
+                    className="text-sm"
+                    min="1"
+                    max="12"
+                    disabled={isLiving}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Ngày</label>
+                  <Input
+                    type="number"
+                    value={deathDay}
+                    onChange={(e) => setDeathDay(e.target.value)}
+                    placeholder="DD"
+                    className="text-sm"
+                    min="1"
+                    max="31"
+                    disabled={isLiving}
+                  />
+                </div>
               </div>
             </div>
 
@@ -770,7 +993,9 @@ export function AddChildDialog({
               />
             </div>
           </div>
+        </div>
 
+        <div className="border-t px-5 py-3 flex-shrink-0 space-y-3">
           {error && (
             <div className="rounded-lg bg-red-50 dark:bg-red-950/30 p-3 text-xs text-red-700 dark:text-red-400">
               {error}

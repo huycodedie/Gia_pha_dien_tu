@@ -2,9 +2,14 @@
 
 import { useState, useRef } from "react";
 import { X, Upload, Loader2, Image as ImageIcon } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { uploadPersonImage, deletePersonImage, updatePersonProfile } from "@/lib/supabase-data";
+import {
+  uploadPersonImage,
+  deletePersonImage,
+  updatePersonProfile,
+} from "@/lib/supabase-data";
 import type { PersonDetail } from "@/lib/genealogy-types";
 
 interface EditPersonDialogProps {
@@ -19,12 +24,12 @@ export function EditPersonDialog({
   onSuccess,
 }: EditPersonDialogProps) {
   const [displayName, setDisplayName] = useState(person.displayName || "");
-  const [birthYear, setBirthYear] = useState(person.birthYear?.toString() || "");
-  const [deathYear, setDeathYear] = useState(person.deathYear?.toString() || "");
   const [isLiving, setIsLiving] = useState(person.isLiving);
   const [phone, setPhone] = useState(person.phone || "");
   const [facebook, setFacebook] = useState(person.facebook || "");
-  const [currentAddress, setCurrentAddress] = useState(person.currentAddress || "");
+  const [currentAddress, setCurrentAddress] = useState(
+    person.currentAddress || "",
+  );
   const [imageUrl, setImageUrl] = useState(person.imageUrl || "");
   const [imagePreview, setImagePreview] = useState(person.imageUrl || "");
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -52,7 +57,10 @@ export function EditPersonDialog({
     setError("");
 
     // Upload to Supabase
-    const { url, error: uploadError } = await uploadPersonImage(file, person.handle);
+    const { url, error: uploadError } = await uploadPersonImage(
+      file,
+      person.handle,
+    );
 
     if (uploadError) {
       setError(`Lỗi upload: ${uploadError}`);
@@ -94,8 +102,6 @@ export function EditPersonDialog({
 
     const result = await updatePersonProfile(person.handle, {
       displayName: displayName.trim(),
-      birthYear: birthYear ? parseInt(birthYear) : null,
-      deathYear: deathYear ? parseInt(deathYear) : null,
       isLiving,
       phone: phone.trim() || null,
       facebook: facebook.trim() || null,
@@ -108,6 +114,7 @@ export function EditPersonDialog({
     if (result.error) {
       setError(result.error);
     } else {
+      toast.success("Sửa thông tin thành công!");
       onSuccess();
       onClose();
     }
@@ -217,35 +224,6 @@ export function EditPersonDialog({
             />
           </div>
 
-          {/* Birth/Death Year */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                Năm sinh
-              </label>
-              <Input
-                type="number"
-                value={birthYear}
-                onChange={(e) => setBirthYear(e.target.value)}
-                placeholder="1950"
-                className="text-sm"
-              />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                Năm mất
-              </label>
-              <Input
-                type="number"
-                value={deathYear}
-                onChange={(e) => setDeathYear(e.target.value)}
-                placeholder="2020"
-                className="text-sm"
-                disabled={isLiving}
-              />
-            </div>
-          </div>
-
           {/* Living Status */}
           <div className="flex items-center gap-2">
             <input
@@ -255,7 +233,10 @@ export function EditPersonDialog({
               onChange={(e) => setIsLiving(e.target.checked)}
               className="rounded"
             />
-            <label htmlFor="isLiving" className="text-xs text-slate-600 dark:text-slate-400">
+            <label
+              htmlFor="isLiving"
+              className="text-xs text-slate-600 dark:text-slate-400"
+            >
               Còn sống
             </label>
           </div>
