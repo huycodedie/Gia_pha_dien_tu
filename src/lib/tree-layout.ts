@@ -25,6 +25,8 @@ export interface TreeNode {
   families: string[];
   parentFamilies: string[];
   ownerId?: string;
+  authUserId?: string;
+  hasAccount?: boolean;
   imageUrl?: string;
   phone?: string;
   facebook?: string;

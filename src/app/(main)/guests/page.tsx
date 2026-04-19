@@ -13,12 +13,16 @@ import {
   getMyPendingInvitations,
 } from "@/lib/supabase-data";
 import { toast } from "sonner";
+import { GuestAccountsList } from "@/components/guest-accounts-list";
 
 interface Guest {
   id: string;
   email: string;
   display_name: string;
   created_at: string;
+  person_handle?: string;
+  person_name?: string;
+  relation_label?: string;
 }
 
 interface PendingInvitation {
@@ -262,6 +266,15 @@ export default function GuestsPage() {
                   <div>
                     <h3 className="font-medium">{guest.display_name}</h3>
                     <p className="text-sm text-gray-600">{guest.email}</p>
+                    {guest.relation_label ? (
+                      <p className="text-sm text-slate-600">
+                        {guest.relation_label}
+                      </p>
+                    ) : guest.person_name ? (
+                      <p className="text-sm text-slate-600">
+                        Liên kết với: {guest.person_name}
+                      </p>
+                    ) : null}
                     <p className="text-xs text-gray-500">
                       Tạo:{" "}
                       {new Date(guest.created_at).toLocaleDateString("vi-VN")}
@@ -300,6 +313,11 @@ export default function GuestsPage() {
           <p>• Mã mời có hiệu lực trong 30 ngày</p>
         </CardContent>
       </Card>
+
+      {/* Guest Accounts Created from Family Members */}
+      {/* <div className="mt-8">
+        <GuestAccountsList />
+      </div> */}
     </div>
   );
 }

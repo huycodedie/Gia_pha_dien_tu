@@ -286,6 +286,8 @@ EXECUTE FUNCTION public.handle_new_user();
 
 -- Add owner_id column if not exists
 ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS has_account BOOLEAN DEFAULT false;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS is_privacy_filtered BOOLEAN DEFAULT false;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS is_patrilineal BOOLEAN DEFAULT true;
 ALTER TABLE families ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
@@ -297,47 +299,19 @@ CREATE INDEX IF NOT EXISTS idx_families_owner ON families(owner_id);
 -- Helper function to check if someone is a family member of another person
 CREATE OR REPLACE FUNCTION is_family_member(p_person_handle TEXT, p_target_person_handle TEXT)
 RETURNS BOOLEAN AS $$
-DECLARE
-    person_record RECORD;
-    target_record RECORD;
-    parent_family TEXT;
-    person_family TEXT;
 BEGIN
-    -- Get both people
-    SELECT * INTO person_record FROM people WHERE handle = p_person_handle;
-    SELECT * INTO target_record FROM people WHERE handle = p_target_person_handle;
-    
-    IF person_record IS NULL OR target_record IS NULL THEN
-        RETURN FALSE;
-    END IF;
-    
-    -- Check if same person
     IF p_person_handle = p_target_person_handle THEN
         RETURN TRUE;
     END IF;
-    
-    -- Check if target is in person's families list (direct family)
-    IF target_record.families && person_record.families THEN
-        RETURN TRUE;
-    END IF;
-    
-    -- Check if they share parent families (siblings)
-    IF person_record.parent_families && target_record.parent_families THEN
-        RETURN TRUE;
-    END IF;
-    
-    -- Check if one is parent of the other (parent_families check)
-    -- If target is in person's parent families, target is a parent
-    IF person_record.parent_families && target_record.families THEN
-        RETURN TRUE;
-    END IF;
-    
-    -- If person is in target's parent families, person is a parent
-    IF target_record.parent_families && person_record.families THEN
-        RETURN TRUE;
-    END IF;
-    
-    RETURN FALSE;
+
+    RETURN EXISTS (
+        SELECT 1 FROM families
+        WHERE (
+            (father_handle = p_person_handle OR mother_handle = p_person_handle OR p_person_handle = ANY(children))
+            AND
+            (father_handle = p_target_person_handle OR mother_handle = p_target_person_handle OR p_target_person_handle = ANY(children))
+        )
+    );
 END;
 $$ LANGUAGE plpgsql IMMUTABLE;
 
@@ -351,7 +325,7 @@ CREATE POLICY "owner_user_admin_guest_read_people" ON people
         owner_id = auth.uid() OR
         owner_id IS NULL OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user')) OR
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'guest' AND guest_of = owner_id)
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'guest' AND guest_of = people.owner_id)
     );
 
 CREATE POLICY "owner_user_admin_guest_insert_people" ON people
@@ -363,6 +337,7 @@ CREATE POLICY "owner_user_admin_guest_insert_people" ON people
 CREATE POLICY "owner_user_admin_guest_update_people" ON people
     FOR UPDATE USING (
         owner_id = auth.uid() OR
+        auth_user_id = auth.uid() OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user'))
     );
 
@@ -377,7 +352,7 @@ CREATE POLICY "owner_user_admin_guest_read_families" ON families
         owner_id = auth.uid() OR
         owner_id IS NULL OR
         EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role IN ('admin','user')) OR
-        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'guest' AND guest_of = owner_id)
+        EXISTS (SELECT 1 FROM profiles WHERE id = auth.uid() AND role = 'guest' AND guest_of = families.owner_id)
     );
 
 CREATE POLICY "owner_user_admin_guest_insert_families" ON families

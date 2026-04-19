@@ -23,6 +23,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { toast } from "sonner";
 import { Separator } from "@/components/ui/separator";
 import { zodiacYear } from "@/lib/genealogy-types";
 import type { PersonDetail } from "@/lib/genealogy-types";
@@ -41,11 +42,14 @@ function formatDateVN(dateStr: string): string {
 export default function PersonProfilePage() {
   const params = useParams();
   const router = useRouter();
-  const { role } = useAuth();
+  const { role, session } = useAuth();
   const handle = params.handle as string;
   const [person, setPerson] = useState<PersonDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [creatingAccount, setCreatingAccount] = useState(false);
+  const [canEdit, setCanEdit] = useState(false);
+  const [canCreateAccount, setCanCreateAccount] = useState(false);
 
   const fetchPerson = async () => {
     try {
@@ -80,6 +84,8 @@ export default function PersonProfilePage() {
           notes: row.notes as string | undefined,
           imageUrl: row.image_url as string | undefined,
           facebook: row.facebook as string | undefined,
+          hasAccount: row.has_account as boolean | undefined,
+          authUserId: row.auth_user_id as string | undefined,
         } as PersonDetail);
       }
     } catch {
@@ -92,10 +98,68 @@ export default function PersonProfilePage() {
     fetchPerson();
   }, [handle]);
 
+  const handleCreateAccount = async () => {
+    if (!session?.access_token) {
+      toast.error("Vui lòng đăng nhập để tạo tài khoản.");
+      return;
+    }
+
+    setCreatingAccount(true);
+    try {
+      const res = await fetch(`/api/people/${handle}/create-account`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        toast.error(data.error || "Không thể tạo tài khoản.");
+        return;
+      }
+
+      toast.success("Tạo tài khoản thành công.");
+      await fetchPerson();
+    } catch (error) {
+      toast.error("Lỗi khi gọi API tạo tài khoản.");
+    } finally {
+      setCreatingAccount(false);
+    }
+  };
+
   const handleEditSuccess = async () => {
     // Refresh person data
     await fetchPerson();
   };
+
+  const checkPermissions = async () => {
+    if (!session?.access_token || !person) return;
+
+    try {
+      // Check if user can edit this person
+      const res = await fetch(`/api/people/${handle}/permissions`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+        },
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setCanEdit(data.canEdit);
+        setCanCreateAccount(data.canCreateAccount);
+      }
+    } catch (error) {
+      console.error("Error checking permissions:", error);
+    }
+  };
+
+  useEffect(() => {
+    if (person) {
+      checkPermissions();
+    }
+  }, [person, session]);
 
   if (loading) {
     return (
@@ -166,20 +230,37 @@ export default function PersonProfilePage() {
             </div>
           </div>
         </div>
-        {(role === "user" || role === "admin") && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setShowEditDialog(true)}
-          >
-            <Edit className="h-4 w-4 mr-2" />
-            Chỉnh sửa
-          </Button>
-        )}
+        <div className="flex gap-2 items-center">
+          {person.hasAccount ? (
+            <Badge variant="secondary">Created</Badge>
+          ) : canCreateAccount ? (
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleCreateAccount}
+              disabled={creatingAccount}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              {creatingAccount ? "Đang tạo..." : "Create Account"}
+            </Button>
+          ) : (
+            <Badge variant="outline">No account</Badge>
+          )}
+          {canEdit && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowEditDialog(true)}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Chỉnh sửa
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Edit Dialog */}
-      {person && showEditDialog && (role === "user" || role === "admin") && (
+      {person && showEditDialog && canEdit && (
         <EditPersonDialog
           person={person}
           onClose={() => setShowEditDialog(false)}

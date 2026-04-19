@@ -104,6 +104,8 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
     families: (row.families as string[]) || [],
     parentFamilies: (row.parent_families as string[]) || [],
     ownerId: row.owner_id as string | undefined,
+    authUserId: row.auth_user_id as string | undefined,
+    hasAccount: row.has_account as boolean | undefined,
     imageUrl: row.image_url as string | undefined,
     phone: row.phone as string | undefined,
     facebook: row.facebook as string | undefined,
@@ -925,24 +927,125 @@ export async function getMyGuests(): Promise<
     email: string;
     display_name: string;
     created_at: string;
+    person_handle?: string;
+    person_name?: string;
+    relation_label?: string;
   }>
 > {
   const { data: user } = await supabase.auth.getUser();
   if (!user.user) return [];
 
-  const { data, error } = await supabase
+  const { data: profiles, error: profileError } = await supabase
     .from("profiles")
     .select("id, email, display_name, created_at")
     .eq("guest_of", user.user.id)
     .eq("role", "guest")
     .order("created_at", { ascending: false });
 
-  if (error) {
-    console.error("Failed to fetch guests:", error.message);
+  if (profileError) {
+    console.error("Failed to fetch guests:", profileError.message);
     return [];
   }
 
-  return data || [];
+  if (!profiles || profiles.length === 0) return [];
+
+  const guests = await Promise.all(
+    profiles.map(async (profile) => {
+      const { data: person, error: personError } = await supabase
+        .from("people")
+        .select("handle, display_name, gender")
+        .eq("auth_user_id", profile.id)
+        .single();
+
+      let relation_label = "Người tham quan";
+      let person_handle: string | undefined;
+      let person_name: string | undefined;
+
+      if (person && !personError) {
+        person_handle = person.handle;
+        person_name = person.display_name;
+
+        // First check if this person is a child (higher priority)
+        const { data: childFamilies } = await supabase
+          .from("families")
+          .select("father_handle,mother_handle")
+          .contains("children", [person.handle])
+          .limit(1);
+
+        if (childFamilies && childFamilies.length > 0) {
+          const family = childFamilies[0];
+          if (family.father_handle) {
+            const { data: father } = await supabase
+              .from("people")
+              .select("display_name")
+              .eq("handle", family.father_handle)
+              .single();
+
+            if (father?.display_name) {
+              relation_label = `Con của ${father.display_name}`;
+            }
+          }
+          if (relation_label === "Người tham quan" && family.mother_handle) {
+            const { data: mother } = await supabase
+              .from("people")
+              .select("display_name")
+              .eq("handle", family.mother_handle)
+              .single();
+
+            if (mother?.display_name) {
+              relation_label = `Con của ${mother.display_name}`;
+            }
+          }
+        }
+
+        // If not a child, check if this person is a spouse (lower priority)
+        if (relation_label === "Người tham quan") {
+          const { data: spouseFamilies } = await supabase
+            .from("families")
+            .select("father_handle,mother_handle")
+            .or(
+              `father_handle.eq.${person.handle},mother_handle.eq.${person.handle}`,
+            )
+            .limit(1);
+
+          if (spouseFamilies && spouseFamilies.length > 0) {
+            const family = spouseFamilies[0];
+            const partnerHandle =
+              family.father_handle === person.handle
+                ? family.mother_handle
+                : family.father_handle;
+
+            if (partnerHandle) {
+              const { data: partner } = await supabase
+                .from("people")
+                .select("display_name")
+                .eq("handle", partnerHandle)
+                .single();
+
+              if (partner?.display_name) {
+                relation_label =
+                  person.gender === 1
+                    ? `Chồng của ${partner.display_name}`
+                    : `Vợ của ${partner.display_name}`;
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        id: profile.id,
+        email: profile.email,
+        display_name: profile.display_name,
+        created_at: profile.created_at,
+        person_handle,
+        person_name,
+        relation_label,
+      };
+    }),
+  );
+
+  return guests;
 }
 
 /** Get list of pending guest invitations created by current user */
