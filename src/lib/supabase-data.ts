@@ -821,6 +821,75 @@ export async function updatePersonProfile(
   return { error: null };
 }
 
+export async function updateAccountProfile(updates: {
+  displayName?: string;
+  email?: string;
+  password?: string;
+  phone?: string | null;
+}): Promise<{ error: string | null }> {
+  const { data: user } = await supabase.auth.getUser();
+  if (!user.user) {
+    return { error: "Bạn phải đăng nhập để cập nhật hồ sơ." };
+  }
+
+  const currentEmail = user.user.email?.trim() || "";
+  const cleanedEmail = updates.email?.trim().replace(/^"+|"+$/g, "");
+
+  const authUpdate: {
+    email?: string;
+    password?: string;
+    data?: { display_name?: string };
+  } = {};
+
+  if (updates.email !== undefined) {
+    if (!cleanedEmail) {
+      return { error: "Email không được để trống." };
+    }
+    if (cleanedEmail !== currentEmail) {
+      authUpdate.email = cleanedEmail;
+    }
+  }
+
+  if (updates.password !== undefined) authUpdate.password = updates.password;
+  if (updates.displayName !== undefined) {
+    authUpdate.data = { display_name: updates.displayName.trim() };
+  }
+
+  if (Object.keys(authUpdate).length > 0) {
+    const { error: authError } = await supabase.auth.updateUser(authUpdate);
+    if (authError) {
+      console.error("Failed to update auth user:", authError.message);
+      if (authError.message.includes("rate limit")) {
+        return {
+          error:
+            "Không thể thay đổi email ngay bây giờ. Vui lòng đợi một lúc rồi thử lại.",
+        };
+      }
+      return { error: authError.message };
+    }
+  }
+
+  const profileUpdate: Record<string, unknown> = {};
+  if (updates.displayName !== undefined)
+    profileUpdate.display_name = updates.displayName;
+  if (updates.email !== undefined) profileUpdate.email = cleanedEmail;
+  if (updates.phone !== undefined) profileUpdate.phone = updates.phone;
+
+  if (Object.keys(profileUpdate).length > 0) {
+    const { error: profileError } = await supabase
+      .from("profiles")
+      .update(profileUpdate)
+      .eq("id", user.user.id);
+
+    if (profileError) {
+      console.error("Failed to update profile:", profileError.message);
+      return { error: profileError.message };
+    }
+  }
+
+  return { error: null };
+}
+
 // ═══ GUEST INVITATION FUNCTIONS ═══
 
 /** Generate a guest invitation code */

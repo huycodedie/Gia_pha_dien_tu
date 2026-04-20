@@ -234,6 +234,7 @@ CREATE TABLE profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE,
     display_name TEXT,
+    phone TEXT,
     username TEXT UNIQUE,
     role TEXT DEFAULT 'viewer' CHECK (role IN ('admin','user','viewer','guest')),
     status TEXT DEFAULT 'active',
@@ -288,6 +289,7 @@ EXECUTE FUNCTION public.handle_new_user();
 ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS auth_user_id UUID REFERENCES auth.users(id) ON DELETE SET NULL;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS has_account BOOLEAN DEFAULT false;
+ALTER TABLE profiles ADD COLUMN IF NOT EXISTS phone TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS is_privacy_filtered BOOLEAN DEFAULT false;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS is_patrilineal BOOLEAN DEFAULT true;
 ALTER TABLE families ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;

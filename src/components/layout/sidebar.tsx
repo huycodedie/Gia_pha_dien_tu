@@ -48,7 +48,10 @@ export function Sidebar() {
       ? [{ href: "/book", label: "Sách gia phả", icon: BookOpen }]
       : []),
     ...(isLoggedIn
-      ? [{ href: "/people", label: "Thành viên", icon: Users }]
+      ? [
+          { href: "/people", label: "Thành viên", icon: Users },
+          { href: "/profile", label: "Hồ sơ của tôi", icon: Contact },
+        ]
       : []),
     ...(profile?.role === "user"
       ? [{ href: "/guests", label: "Tài khoản khách", icon: Shield }]
