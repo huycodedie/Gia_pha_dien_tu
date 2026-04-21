@@ -85,6 +85,7 @@ DECLARE
     p2_maternal_grandpa TEXT;
     common_grandpa TEXT;
     distance_to_common INT;
+    rel_count INT;
 BEGIN
     -- Get both people's info
     SELECT * INTO person1 FROM people WHERE handle = p_person1_handle LIMIT 1;
@@ -107,6 +108,18 @@ BEGIN
     FROM families WHERE children @> ARRAY[p_person2_handle] LIMIT 1;
 
     gen_diff := person2.generation - person1.generation;
+
+    -- ===== SPOUSE RELATIONSHIP =====
+    IF gen_diff = 0 THEN
+        -- Check if they are spouses in the same family
+        IF EXISTS (
+            SELECT 1 FROM families 
+            WHERE (father_handle = p_person1_handle AND mother_handle = p_person2_handle) 
+               OR (father_handle = p_person2_handle AND mother_handle = p_person1_handle)
+        ) THEN
+            IF person2.gender = 1 THEN RETURN 'Chồng'; ELSE RETURN 'Vợ'; END IF;
+        END IF;
+    END IF;
 
     -- ===== DIRECT PARENT-CHILD RELATIONSHIP =====
     IF gen_diff = -1 AND (p1_father = p_person2_handle OR p1_mother = p_person2_handle) THEN
@@ -154,6 +167,151 @@ BEGIN
         IF (p1_father IS NOT NULL AND p1_father != '' AND p1_father = p2_father)
            OR (p1_mother IS NOT NULL AND p1_mother != '' AND p1_mother = p2_mother) THEN
             IF person2.gender = 1 THEN RETURN 'Anh/Em trai'; ELSE RETURN 'Chị/Em gái'; END IF;
+        END IF;
+    END IF;
+
+    -- ===== IN-LAW RELATIONSHIPS (same generation) =====
+    IF gen_diff = 0 THEN
+        -- Check if person2 is spouse of person1's child (person1 is parent-in-law of person2)
+        -- person1's child is father in f2, person2 is mother in f2
+        IF person1.gender = 0 THEN
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.father_handle = child
+            WHERE f1.mother_handle = p_person1_handle AND f2.mother_handle = p_person2_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Mẹ chồng';
+            END IF;
+        ELSE
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.father_handle = child
+            WHERE f1.father_handle = p_person1_handle AND f2.mother_handle = p_person2_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Bố chồng';
+            END IF;
+        END IF;
+        
+        -- Check if person2 is spouse of person1's child (male spouse)
+        -- person1's child is mother in f2, person2 is father in f2
+        IF person1.gender = 0 THEN
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.mother_handle = child
+            WHERE f1.mother_handle = p_person1_handle AND f2.father_handle = p_person2_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Mẹ vợ';
+            END IF;
+        ELSE
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.mother_handle = child
+            WHERE f1.father_handle = p_person1_handle AND f2.father_handle = p_person2_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Bố vợ';
+            END IF;
+        END IF;
+        
+        -- Check if person1 is spouse of person2's child (person2 is parent-in-law of person1)
+        -- person2's child is father in f2, person1 is mother in f2
+        IF person2.gender = 0 THEN
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.father_handle = child
+            WHERE f1.mother_handle = p_person2_handle AND f2.mother_handle = p_person1_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Mẹ chồng';
+            END IF;
+        ELSE
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.father_handle = child
+            WHERE f1.father_handle = p_person2_handle AND f2.mother_handle = p_person1_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Bố chồng';
+            END IF;
+        END IF;
+        
+        -- Check if person1 is spouse of person2's child (male spouse)
+        -- person2's child is mother in f2, person1 is father in f2
+        IF person2.gender = 0 THEN
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.mother_handle = child
+            WHERE f1.mother_handle = p_person2_handle AND f2.father_handle = p_person1_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Mẹ vợ';
+            END IF;
+        ELSE
+            SELECT COUNT(*) INTO rel_count FROM families f1
+            CROSS JOIN unnest(f1.children) as child
+            JOIN families f2 ON f2.mother_handle = child
+            WHERE f1.father_handle = p_person2_handle AND f2.father_handle = p_person1_handle;
+            
+            IF rel_count > 0 THEN
+                RETURN 'Bố vợ';
+            END IF;
+        END IF;
+    END IF;
+
+    -- ===== IN-LAW RELATIONSHIPS =====
+    -- Mother-in-law / Daughter-in-law
+    IF gen_diff = 1 THEN
+        -- Check if person2 is daughter-in-law of person1 (person1's child spouse)
+        -- person1's child is father in f2, person2 is mother in f2
+        SELECT COUNT(*) INTO rel_count FROM families f1
+        CROSS JOIN unnest(f1.children) as child
+        JOIN families f2 ON f2.father_handle = child
+        WHERE (f1.father_handle = p_person1_handle OR f1.mother_handle = p_person1_handle) 
+          AND f2.mother_handle = p_person2_handle;
+        
+        IF rel_count > 0 THEN
+            RETURN 'Con dâu';
+        END IF;
+        
+        -- Check if person2 is son-in-law of person1 (person1's child spouse)
+        -- person1's child is mother in f2, person2 is father in f2
+        SELECT COUNT(*) INTO rel_count FROM families f1
+        CROSS JOIN unnest(f1.children) as child
+        JOIN families f2 ON f2.mother_handle = child
+        WHERE (f1.father_handle = p_person1_handle OR f1.mother_handle = p_person1_handle) 
+          AND f2.father_handle = p_person2_handle;
+        
+        IF rel_count > 0 THEN
+            RETURN 'Con rể';
+        END IF;
+    END IF;
+
+    IF gen_diff = -1 THEN
+        -- Check if person1 is daughter-in-law of person2 (person2's child spouse)
+        -- person2's child is father in f2, person1 is mother in f2
+        SELECT COUNT(*) INTO rel_count FROM families f1
+        CROSS JOIN unnest(f1.children) as child
+        JOIN families f2 ON f2.father_handle = child
+        WHERE (f1.father_handle = p_person2_handle OR f1.mother_handle = p_person2_handle) 
+          AND f2.mother_handle = p_person1_handle;
+        
+        IF rel_count > 0 THEN
+            IF person2.gender = 0 THEN RETURN 'Mẹ chồng'; ELSE RETURN 'Bố chồng'; END IF;
+        END IF;
+        
+        -- Check if person1 is son-in-law of person2 (person2's child spouse)
+        -- person2's child is mother in f2, person1 is father in f2
+        SELECT COUNT(*) INTO rel_count FROM families f1
+        CROSS JOIN unnest(f1.children) as child
+        JOIN families f2 ON f2.mother_handle = child
+        WHERE (f1.father_handle = p_person2_handle OR f1.mother_handle = p_person2_handle) 
+          AND f2.father_handle = p_person1_handle;
+        
+        IF rel_count > 0 THEN
+            IF person2.gender = 0 THEN RETURN 'Mẹ vợ'; ELSE RETURN 'Bố vợ'; END IF;
         END IF;
     END IF;
 
