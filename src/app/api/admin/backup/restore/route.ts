@@ -48,7 +48,16 @@ export async function POST(req: NextRequest) {
     }
 
     // Parse backup data from request
-    const body = await req.json();
+    let body;
+    try {
+      body = await req.json();
+    } catch (parseError: any) {
+      return NextResponse.json(
+        { error: "Invalid JSON in request body" },
+        { status: 400 },
+      );
+    }
+
     const backupData: BackupData = body.backup;
 
     if (!backupData || !backupData.exported_at) {
@@ -263,6 +272,12 @@ export async function POST(req: NextRequest) {
         { status: 500 },
       );
     }
+
+    return NextResponse.json({
+      success: true,
+      restoredCount,
+      errors: errors.length > 0 ? errors : undefined,
+    });
   } catch (error: any) {
     return NextResponse.json(
       { error: error.message || "Internal server error" },
