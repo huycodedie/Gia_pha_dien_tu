@@ -262,6 +262,12 @@ export default function PricingPage() {
     return subscriptions.find((sub) => sub.plan_id === planId);
   };
 
+  const getActiveSubscription = () => {
+    return subscriptions.find(
+      (sub) => sub.status === "active" && new Date(sub.expires_at) > new Date(),
+    );
+  };
+
   const getPendingOrder = (planId: string) => {
     return paymentOrders.find((order) => order.plan_id === planId);
   };
@@ -269,6 +275,14 @@ export default function PricingPage() {
   const isPlanAvailable = (plan: Plan) => {
     const currentSub = getCurrentSubscription(plan.id);
     if (currentSub) return false;
+
+    // Check if user has any active subscription for other plans
+    const hasActiveSubscription = subscriptions.some((sub) => {
+      if (sub.plan_id === plan.id) return false; // Skip current plan check
+      return sub.status === "active" && new Date(sub.expires_at) > new Date();
+    });
+
+    if (hasActiveSubscription) return false;
 
     if (plan.is_free) {
       return true;
@@ -467,39 +481,59 @@ export default function PricingPage() {
                   </div>
                 )}
 
-                <Button
-                  className="w-full"
-                  onClick={() => {
-                    if (plan.is_free) {
-                      upgradeRole(plan.id);
-                    } else if (pendingOrder) {
-                      openPendingOrder(pendingOrder);
-                    } else {
-                      createManualOrder(plan);
-                    }
-                  }}
-                  disabled={
+                {(() => {
+                  const activeSub = getActiveSubscription();
+                  const isDisabled =
                     !user ||
-                    !!currentSub ||
+                    !isPlanAvailable(plan) ||
                     upgrading === plan.id ||
-                    (loading && !plan.is_free)
+                    (loading && !plan.is_free);
+
+                  if (isDisabled && activeSub && !currentSub) {
+                    return (
+                      <div className="space-y-2">
+                        <div className="p-2 bg-orange-50 rounded text-sm text-orange-700 text-center">
+                          Bạn đang có gói active khác. Chỉ có thể mua gói mới
+                          khi gói hiện tại hết hạn.
+                        </div>
+                        <Button className="w-full" disabled={true}>
+                          Không thể mua
+                        </Button>
+                      </div>
+                    );
                   }
-                  variant={plan.is_free ? "outline" : "default"}
-                >
-                  {upgrading === plan.id ? (
-                    <>Đang xử lý...</>
-                  ) : !user ? (
-                    "Đăng nhập để nâng cấp"
-                  ) : currentSub ? (
-                    "Đang sử dụng"
-                  ) : plan.is_free ? (
-                    "Dùng thử miễn phí"
-                  ) : pendingOrder ? (
-                    "Xem QR chuyển khoản"
-                  ) : (
-                    "Tạo đơn chuyển khoản"
-                  )}
-                </Button>
+
+                  return (
+                    <Button
+                      className="w-full"
+                      onClick={() => {
+                        if (plan.is_free) {
+                          upgradeRole(plan.id);
+                        } else if (pendingOrder) {
+                          openPendingOrder(pendingOrder);
+                        } else {
+                          createManualOrder(plan);
+                        }
+                      }}
+                      disabled={isDisabled}
+                      variant={plan.is_free ? "outline" : "default"}
+                    >
+                      {upgrading === plan.id ? (
+                        <>Đang xử lý...</>
+                      ) : !user ? (
+                        "Đăng nhập để nâng cấp"
+                      ) : currentSub ? (
+                        "Đang sử dụng"
+                      ) : plan.is_free ? (
+                        "Dùng thử miễn phí"
+                      ) : pendingOrder ? (
+                        "Xem QR chuyển khoản"
+                      ) : (
+                        "Tạo đơn chuyển khoản"
+                      )}
+                    </Button>
+                  );
+                })()}
               </CardContent>
             </Card>
           );
@@ -548,7 +582,7 @@ export default function PricingPage() {
                       className="w-full rounded-md border bg-white"
                     />
                   ) : (
-                    <div className="flex h-[220px] items-center justify-center rounded-md border bg-background text-center text-sm text-muted-foreground">
+                    <div className="flex h-55 items-center justify-center rounded-md border bg-background text-center text-sm text-muted-foreground">
                       Chưa cấu hình QR. Bạn vẫn có thể chuyển khoản thủ công
                       bằng thông tin bên cạnh.
                     </div>
