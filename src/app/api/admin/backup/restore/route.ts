@@ -6,6 +6,16 @@ interface BackupData {
   people?: Array<any>;
   families?: Array<any>;
   profiles?: Array<any>;
+  contributions?: Array<any>;
+  posts?: Array<any>;
+  comments?: Array<any>;
+  notifications?: Array<any>;
+  guest_invitations?: Array<any>;
+  plans?: Array<any>;
+  subscriptions?: Array<any>;
+  user_plan_usage?: Array<any>;
+  bank_accounts?: Array<any>;
+  payment_orders?: Array<any>;
 }
 
 export async function POST(req: NextRequest) {
@@ -70,6 +80,34 @@ export async function POST(req: NextRequest) {
         .from("events")
         .delete()
         .neq("id", "00000000-0000-0000-0000-000000000000");
+      await serviceClient
+        .from("contributions")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+      await serviceClient
+        .from("payment_orders")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+      await serviceClient
+        .from("user_plan_usage")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+      await serviceClient
+        .from("subscriptions")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+      await serviceClient
+        .from("guest_invitations")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+      await serviceClient
+        .from("bank_accounts")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
+      await serviceClient
+        .from("plans")
+        .delete()
+        .neq("id", "00000000-0000-0000-0000-000000000000");
       await serviceClient.from("families").delete().neq("handle", "");
       await serviceClient.from("people").delete().neq("handle", "");
 
@@ -107,15 +145,118 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      return NextResponse.json({
-        success: errors.length === 0,
-        restored_count: restoredCount,
-        errors: errors.length > 0 ? errors : null,
-        message:
-          errors.length === 0
-            ? `Khôi phục thành công ${restoredCount} bản ghi`
-            : "Khôi phục hoàn tất với một số lỗi",
-      });
+      if (backupData.plans && backupData.plans.length > 0) {
+        const { error: plansError } = await serviceClient
+          .from("plans")
+          .insert(backupData.plans);
+        if (plansError) {
+          errors.push(`Plans: ${plansError.message}`);
+        } else {
+          restoredCount += backupData.plans.length;
+        }
+      }
+
+      if (backupData.subscriptions && backupData.subscriptions.length > 0) {
+        const { error: subscriptionsError } = await serviceClient
+          .from("subscriptions")
+          .insert(backupData.subscriptions);
+        if (subscriptionsError) {
+          errors.push(`Subscriptions: ${subscriptionsError.message}`);
+        } else {
+          restoredCount += backupData.subscriptions.length;
+        }
+      }
+
+      if (backupData.user_plan_usage && backupData.user_plan_usage.length > 0) {
+        const { error: userPlanUsageError } = await serviceClient
+          .from("user_plan_usage")
+          .insert(backupData.user_plan_usage);
+        if (userPlanUsageError) {
+          errors.push(`User Plan Usage: ${userPlanUsageError.message}`);
+        } else {
+          restoredCount += backupData.user_plan_usage.length;
+        }
+      }
+
+      if (backupData.bank_accounts && backupData.bank_accounts.length > 0) {
+        const { error: bankAccountsError } = await serviceClient
+          .from("bank_accounts")
+          .insert(backupData.bank_accounts);
+        if (bankAccountsError) {
+          errors.push(`Bank Accounts: ${bankAccountsError.message}`);
+        } else {
+          restoredCount += backupData.bank_accounts.length;
+        }
+      }
+
+      if (backupData.payment_orders && backupData.payment_orders.length > 0) {
+        const { error: paymentOrdersError } = await serviceClient
+          .from("payment_orders")
+          .insert(backupData.payment_orders);
+        if (paymentOrdersError) {
+          errors.push(`Payment Orders: ${paymentOrdersError.message}`);
+        } else {
+          restoredCount += backupData.payment_orders.length;
+        }
+      }
+
+      if (backupData.contributions && backupData.contributions.length > 0) {
+        const { error: contributionsError } = await serviceClient
+          .from("contributions")
+          .insert(backupData.contributions);
+        if (contributionsError) {
+          errors.push(`Contributions: ${contributionsError.message}`);
+        } else {
+          restoredCount += backupData.contributions.length;
+        }
+      }
+
+      if (backupData.posts && backupData.posts.length > 0) {
+        const { error: postsError } = await serviceClient
+          .from("posts")
+          .insert(backupData.posts);
+        if (postsError) {
+          errors.push(`Posts: ${postsError.message}`);
+        } else {
+          restoredCount += backupData.posts.length;
+        }
+      }
+
+      if (backupData.comments && backupData.comments.length > 0) {
+        const { error: commentsError } = await serviceClient
+          .from("comments")
+          .insert(backupData.comments);
+        if (commentsError) {
+          errors.push(`Comments: ${commentsError.message}`);
+        } else {
+          restoredCount += backupData.comments.length;
+        }
+      }
+
+      if (backupData.notifications && backupData.notifications.length > 0) {
+        const { error: notificationsError } = await serviceClient
+          .from("notifications")
+          .insert(backupData.notifications);
+        if (notificationsError) {
+          errors.push(`Notifications: ${notificationsError.message}`);
+        } else {
+          restoredCount += backupData.notifications.length;
+        }
+      }
+
+      if (
+        backupData.guest_invitations &&
+        backupData.guest_invitations.length > 0
+      ) {
+        const { error: guestInvitationsError } = await serviceClient
+          .from("guest_invitations")
+          .insert(backupData.guest_invitations);
+        if (guestInvitationsError) {
+          errors.push(`Guest Invitations: ${guestInvitationsError.message}`);
+        } else {
+          restoredCount += backupData.guest_invitations.length;
+        }
+      }
     } catch (error: any) {
       return NextResponse.json(
         { error: error.message || "Restore failed" },

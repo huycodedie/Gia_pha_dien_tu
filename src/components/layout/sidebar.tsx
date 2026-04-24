@@ -6,9 +6,7 @@ import {
   Home,
   TreePine,
   Users,
-  Image,
   Shield,
-  FileText,
   Database,
   ChevronLeft,
   ChevronRight,
@@ -18,6 +16,8 @@ import {
   Newspaper,
   CalendarDays,
   Crown,
+  Receipt,
+  CreditCard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -27,7 +27,9 @@ import { useAuth } from "@/components/auth-provider";
 const adminItems = [
   { href: "/admin/users", label: "Quản lý Users", icon: Shield },
   { href: "/admin/edits", label: "Kiểm duyệt", icon: ClipboardCheck },
-  // { href: '/admin/audit', label: 'Audit Log', icon: FileText },
+  { href: "/admin/plans", label: "Thanh toán", icon: CreditCard },
+  { href: "/admin/invoices", label: "Hóa đơn", icon: Receipt },
+  // { href: "/admin/audit", label: "Audit Log", icon: FileText },
   { href: "/admin/backup", label: "Backup", icon: Database },
 ];
 
@@ -39,7 +41,6 @@ export function Sidebar() {
   const baseNavItems = [
     { href: "/", label: "Trang chủ", icon: Home },
     { href: "/feed", label: "Bảng tin", icon: Newspaper },
-    // { href: '/directory', label: 'Danh bạ', icon: Contact },
     ...(isLoggedIn
       ? [{ href: "/events", label: "Sự kiện", icon: CalendarDays }]
       : []),
@@ -59,7 +60,7 @@ export function Sidebar() {
     ...(profile?.role !== "guest" && isLoggedIn
       ? [{ href: "/pricing", label: "Nâng cấp", icon: Crown }]
       : []),
-    // { href: '/media', label: 'Thư viện', icon: Image },
+    // { href: "/media", label: "Thư viện", icon: Image },
   ];
 
   return (
@@ -69,13 +70,11 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-64",
       )}
     >
-      {/* Logo */}
       <div className="flex items-center gap-2 px-4 py-4 border-b">
         <TreePine className="h-6 w-6 text-primary shrink-0" />
         {!collapsed && <span className="font-bold text-lg">Gia phả họ</span>}
       </div>
 
-      {/* Navigation */}
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
         {baseNavItems.map((item) => {
           const isActive =
@@ -98,7 +97,6 @@ export function Sidebar() {
           );
         })}
 
-        {/* Admin section — only visible for admin users */}
         {isAdmin && (
           <>
             {!collapsed && (
@@ -131,25 +129,17 @@ export function Sidebar() {
         )}
       </nav>
 
-      {/* Contact info */}
       {!collapsed && (
         <div className="border-t px-4 py-3">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Có vấn đề với{" "}
-            <span className="font-semibold text-foreground">
-              gia phả điện tử
-            </span>{" "}
-            hãy liên hệ với số điện thoại sau
+            Có vấn đề với <span className="font-semibold text-foreground">gia phả điện tử</span> hãy liên hệ với số điện thoại sau
             <br />
-            <span className="font-semibold text-foreground">
-              📞 0775 110 663
-            </span>
+            <span className="font-semibold text-foreground">0775 110 663</span>
             <br />
           </p>
         </div>
       )}
 
-      {/* Collapse toggle */}
       <div className="border-t p-2">
         <Button
           variant="ghost"

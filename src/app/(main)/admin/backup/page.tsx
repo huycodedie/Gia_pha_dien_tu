@@ -42,12 +42,46 @@ export default function BackupPage() {
       const { data: people } = await supabase.from("people").select("*");
       const { data: families } = await supabase.from("families").select("*");
       const { data: profiles } = await supabase.from("profiles").select("*");
+      const { data: contributions } = await supabase
+        .from("contributions")
+        .select("*");
+      const { data: posts } = await supabase.from("posts").select("*");
+      const { data: comments } = await supabase.from("comments").select("*");
+      const { data: notifications } = await supabase
+        .from("notifications")
+        .select("*");
+      const { data: guest_invitations } = await supabase
+        .from("guest_invitations")
+        .select("*");
+      const { data: plans } = await supabase.from("plans").select("*");
+      const { data: subscriptions } = await supabase
+        .from("subscriptions")
+        .select("*");
+      const { data: user_plan_usage } = await supabase
+        .from("user_plan_usage")
+        .select("*");
+      const { data: bank_accounts } = await supabase
+        .from("bank_accounts")
+        .select("*");
+      const { data: payment_orders } = await supabase
+        .from("payment_orders")
+        .select("*");
 
       const backup = {
         exported_at: new Date().toISOString(),
         people: people || [],
         families: families || [],
         profiles: profiles || [],
+        contributions: contributions || [],
+        posts: posts || [],
+        comments: comments || [],
+        notifications: notifications || [],
+        guest_invitations: guest_invitations || [],
+        plans: plans || [],
+        subscriptions: subscriptions || [],
+        user_plan_usage: user_plan_usage || [],
+        bank_accounts: bank_accounts || [],
+        payment_orders: payment_orders || [],
       };
 
       // Download as JSON
@@ -215,7 +249,10 @@ export default function BackupPage() {
         <CardContent className="space-y-2 text-sm text-muted-foreground">
           <p>
             <strong>Xuất backup:</strong> Nhấn "Xuất backup JSON" để tải xuống
-            toàn bộ dữ liệu dưới dạng file JSON.
+            toàn bộ dữ liệu từ tất cả các bảng trong hệ thống (people, families,
+            profiles, contributions, posts, comments, notifications,
+            guest_invitations, plans, subscriptions, user_plan_usage,
+            bank_accounts, payment_orders, events).
           </p>
           <p>
             <strong>Khôi phục:</strong> Nhấn "Khôi phục từ file" và chọn file
@@ -244,10 +281,17 @@ function DatabaseStats() {
         "people",
         "families",
         "profiles",
+        "contributions",
         "posts",
         "comments",
-        "events",
         "notifications",
+        "guest_invitations",
+        "plans",
+        "subscriptions",
+        "user_plan_usage",
+        "bank_accounts",
+        "payment_orders",
+        "events",
       ];
       const counts: Record<string, number> = {};
       for (const t of tables) {
@@ -270,7 +314,7 @@ function DatabaseStats() {
     );
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-7 gap-3">
       {Object.entries(stats).map(([table, count]) => (
         <div key={table} className="rounded-lg border p-3 text-center">
           <p className="text-2xl font-bold">{count}</p>

@@ -1,11 +1,5 @@
--- ============================================================
--- 🌳 GIA PHẢ ĐIỆN TỬ — FINAL VERSION (FIX ALL BUGS)
--- ============================================================
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  1. PEOPLE & FAMILIES                                  ║
--- ╚══════════════════════════════════════════════════════════╝
 
 CREATE TABLE IF NOT EXISTS people (
     handle TEXT PRIMARY KEY,
@@ -61,9 +55,6 @@ DROP TRIGGER IF EXISTS families_updated_at ON families;
 CREATE TRIGGER families_updated_at BEFORE UPDATE ON families
 FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  1.5 KINSHIP RELATIONSHIP FUNCTION                    ║
--- ╚══════════════════════════════════════════════════════════╝
 
 -- Function to get relationship between two people
 CREATE OR REPLACE FUNCTION get_kinship_relationship(
@@ -382,9 +373,6 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  2. AUTH: PROFILES + TRIGGER                           ║
--- ╚══════════════════════════════════════════════════════════╝
 
 DROP TABLE IF EXISTS profiles;
 
@@ -400,7 +388,7 @@ CREATE TABLE profiles (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 🔥 TRIGGER CHUẨN (KHÔNG BAO GIỜ LỖI)
+-- đŸ”¥ TRIGGER CHUáº¨N (KHĂ”NG BAO GIá»œ Lá»–I)
 CREATE OR REPLACE FUNCTION public.handle_new_user()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -439,9 +427,9 @@ FOR EACH ROW
 EXECUTE FUNCTION public.handle_new_user();
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  3. INDEXES & RLS FOR PRIVATE TREES                     ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  3. INDEXES & RLS FOR PRIVATE TREES                     â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 -- Add owner_id column if not exists
 ALTER TABLE people ADD COLUMN IF NOT EXISTS owner_id UUID REFERENCES auth.users(id) ON DELETE CASCADE;
@@ -534,9 +522,9 @@ CREATE POLICY "owner_user_admin_guest_delete_families" ON families
     );
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  4. CONTRIBUTIONS                                      ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  4. CONTRIBUTIONS                                      â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 CREATE TABLE IF NOT EXISTS contributions (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -549,9 +537,9 @@ CREATE TABLE IF NOT EXISTS contributions (
 );
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  4. POSTS & COMMENTS                                   ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  4. POSTS & COMMENTS                                   â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 CREATE TABLE IF NOT EXISTS posts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -615,9 +603,9 @@ CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_comments_author ON comments(author_id);
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  5. PROFILES, CONTRIBUTIONS & COMMENTS RLS             ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  5. PROFILES, CONTRIBUTIONS & COMMENTS RLS             â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 -- PROFILES
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
@@ -675,7 +663,7 @@ CREATE POLICY "update own notifications" ON notifications FOR UPDATE USING (auth
 CREATE POLICY "delete own notifications" ON notifications FOR DELETE USING (auth.uid() = user_id);
 
 
--- Sửa table people cho handle tự động tăng
+-- Sá»­a table people cho handle tá»± Ä‘á»™ng tÄƒng
 CREATE SEQUENCE IF NOT EXISTS person_handle_seq START 1000;
 
 CREATE OR REPLACE FUNCTION generate_person_handle()
@@ -728,52 +716,18 @@ $$ LANGUAGE plpgsql;
 ALTER TABLE people 
 ALTER COLUMN handle SET DEFAULT generate_person_handle();
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  6. DEMO DATA (PRIVATE TREES)                          ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  6. DEMO DATA (PRIVATE TREES)                          â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
--- ⚠️  CẬP NHẬT: Demo data để owner_id = NULL (public/demo data)
---    Admin có thể xem tất cả data, kể cả demo data (owner_id = NULL)
---    User chỉ thấy data của mình (owner_id = auth.uid())
-
--- PEOPLE
-INSERT INTO people (handle, display_name, gender, generation, birth_year, death_year, is_living, is_privacy_filtered, is_patrilineal, families, parent_families, owner_id) VALUES
--- Đời 1
-('P001', 'Nguyễn Văn An',    1, 1, 1920, 1995, false, false, true, '{"F001"}', '{}', NULL),
--- Đời 2
-('P002', 'Nguyễn Văn Bình',  1, 2, 1945, NULL, true,  false, true, '{"F002"}', '{"F001"}', NULL),
-('P003', 'Nguyễn Văn Cường', 1, 2, 1948, NULL, true,  false, true, '{"F003"}', '{"F001"}', NULL),
-('P004', 'Nguyễn Văn Dũng',  1, 2, 1951, 2020, false, false, true, '{"F004"}', '{"F001"}', NULL),
--- Đời 3
-('P005', 'Nguyễn Văn Hải',   1, 3, 1970, NULL, true,  false, true, '{"F005"}', '{"F002"}', NULL),
-('P006', 'Nguyễn Văn Hùng',  1, 3, 1973, NULL, true,  false, true, '{}',       '{"F002"}', NULL),
-('P007', 'Nguyễn Văn Khoa',  1, 3, 1975, NULL, true,  false, true, '{"F006"}', '{"F003"}', NULL),
-('P008', 'Nguyễn Văn Khánh', 1, 3, 1978, NULL, true,  false, true, '{}',       '{"F003"}', NULL),
-('P009', 'Nguyễn Văn Long',  1, 3, 1980, NULL, true,  false, true, '{}',       '{"F004"}', NULL),
--- Đời 4
-('P010', 'Nguyễn Văn Minh',  1, 4, 1995, NULL, true,  false, true, '{}',       '{"F005"}', NULL),
-('P011', 'Nguyễn Văn Nam',   1, 4, 1998, NULL, true,  false, true, '{}',       '{"F005"}', NULL),
-('P012', 'Nguyễn Văn Phúc',  1, 4, 2000, NULL, true,  false, true, '{}',       '{"F006"}', NULL),
--- Vợ (ngoại tộc)
-('P013', 'Trần Thị Lan',     2, 1, 1925, 2000, false, false, false, '{}', '{}', NULL),
-('P014', 'Lê Thị Mai',       2, 2, 1948, NULL, true,  false, false, '{}', '{}', NULL),
-('P015', 'Phạm Thị Hoa',     2, 3, 1972, NULL, true,  false, false, '{}', '{}', NULL)
-ON CONFLICT (handle) DO NOTHING;
-
--- FAMILIES
-INSERT INTO families (handle, father_handle, mother_handle, children, owner_id) VALUES
-('F001', 'P001', 'P013', '{"P002","P003","P004"}', NULL),
-('F002', 'P002', 'P014', '{"P005","P006"}', NULL),
-('F003', 'P003', NULL,   '{"P007","P008"}', NULL),
-('F004', 'P004', NULL,   '{"P009"}', NULL),
-('F005', 'P005', 'P015', '{"P010","P011"}', NULL),
-('F006', 'P007', NULL,   '{"P012"}', NULL)
-ON CONFLICT (handle) DO NOTHING;
+-- â ï¸  Cáº¬P NHáº¬T: Demo data Ä‘á»ƒ owner_id = NULL (public/demo data)
+--    Admin cĂ³ thá»ƒ xem táº¥t cáº£ data, ká»ƒ cáº£ demo data (owner_id = NULL)
+--    User chá»‰ tháº¥y data cá»§a mĂ¬nh (owner_id = auth.uid())
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  7. FUNCTIONS FOR ADDING PEOPLE & SPOUSES              ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  7. FUNCTIONS FOR ADDING PEOPLE & SPOUSES              â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 -- Function to add a new person to the family tree
 CREATE OR REPLACE FUNCTION add_person(
@@ -814,7 +768,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- Drop old function overload without p_create_account parameter to avoid ambiguity
 DROP FUNCTION IF EXISTS public.add_spouse(TEXT, TEXT, INTEGER, INTEGER, DATE, INTEGER, DATE, BOOLEAN, BOOLEAN, TEXT, TEXT, TEXT, TEXT, UUID) CASCADE;
 
--- Function to add a spouse (người ngoại tộc) to an existing person
+-- Function to add a spouse (ngÆ°á»i ngoáº¡i tá»™c) to an existing person
 CREATE OR REPLACE FUNCTION add_spouse(
     p_person_handle TEXT,
     p_spouse_name TEXT,
@@ -919,7 +873,7 @@ BEGIN
         'account', account_creds,
         'family_handle', family_handle,
         'person_name', p_spouse_name,
-        'relation', 'vợ/chồng'
+        'relation', 'Vợ/Chồng'
     );
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
@@ -1013,9 +967,9 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  8. PRICING SYSTEM                                     ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  8. PRICING SYSTEM                                     â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
 -- Plans table
 CREATE TABLE IF NOT EXISTS plans (
@@ -1023,6 +977,7 @@ CREATE TABLE IF NOT EXISTS plans (
     name TEXT NOT NULL,
     description TEXT,
     price DECIMAL(10,2),
+    discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0 CHECK (discount_percent >= 0 AND discount_percent < 100),
     currency TEXT DEFAULT 'VND',
     duration_days INTEGER NOT NULL,
     from_role TEXT NOT NULL CHECK (from_role IN ('viewer')),
@@ -1032,6 +987,9 @@ CREATE TABLE IF NOT EXISTS plans (
     people_limit INTEGER DEFAULT 30, -- Number of people user can add with this plan
     created_at TIMESTAMPTZ DEFAULT now()
 );
+
+ALTER TABLE plans
+    ADD COLUMN IF NOT EXISTS discount_percent DECIMAL(5,2) NOT NULL DEFAULT 0;
 
 -- Subscriptions table
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -1065,8 +1023,19 @@ CREATE INDEX IF NOT EXISTS idx_subscriptions_expires ON subscriptions(expires_at
 ALTER TABLE subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE user_plan_usage ENABLE ROW LEVEL SECURITY;
 
+DROP POLICY IF EXISTS "users_read_own_subscriptions" ON subscriptions;
 CREATE POLICY "users_read_own_subscriptions" ON subscriptions
     FOR SELECT USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "admins_read_all_subscriptions" ON subscriptions;
+CREATE POLICY "admins_read_all_subscriptions" ON subscriptions
+    FOR SELECT USING (
+        EXISTS (
+            SELECT 1
+            FROM profiles
+            WHERE id = auth.uid() AND role = 'admin'
+        )
+    );
 
 CREATE POLICY "users_read_own_usage" ON user_plan_usage
     FOR SELECT USING (auth.uid() = user_id);
@@ -1143,7 +1112,7 @@ BEGIN
         p_user_id,
         'SYSTEM',
         'Bạn đã được nâng cấp lên User',
-        'Tài khoản của bạn đã được nâng cấp lên kế hoạch ' || plan_record.name || '. Thưởng thức các tính năng mới ngay! ',
+        'Tài khoản của bạn đã được nâng cấp lên kế hoạch ' || plan_record.name || '. Thưởng thức các tính năng mới ngay!',
         '/pricing'
     );
 
@@ -1260,15 +1229,15 @@ CREATE TRIGGER subscription_expiry_trigger
     EXECUTE FUNCTION check_subscription_expiry();
 
 -- Insert default plans
-INSERT INTO plans (name, description, price, duration_days, from_role, to_role, is_free, max_uses, people_limit) VALUES
-('Free Trial', 'Nâng cấp lên User miễn phí trong 3 ngày', 0, 3, 'viewer', 'user', true, 1, 30),
-('Monthly Premium', 'Nâng cấp lên User trong 1 tháng', 50000, 30, 'viewer', 'user', false, NULL, 150)
+INSERT INTO plans (name, description, price, discount_percent, duration_days, from_role, to_role, is_free, max_uses, people_limit) VALUES
+('Free Trial', 'Nâng cấp lên User miễn phí trong 3 ngày', 0, 0, 3, 'viewer', 'user', true, 1, 30),
+('Monthly Premium', 'Nâng cấp lên User trong 1 tháng', 50000, 0, 30, 'viewer', 'user', false, NULL, 150)
 ON CONFLICT DO NOTHING;
 
 
--- ╔══════════════════════════════════════════════════════════╗
--- ║  STORAGE: Posts bucket for images                       ║
--- ╚══════════════════════════════════════════════════════════╝
+-- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+-- â•‘  STORAGE: Posts bucket for images                       â•‘
+-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
     
 -- Create posts storage bucket
 INSERT INTO storage.buckets (id, name, public, avif_autodetection, file_size_limit, allowed_mime_types)
@@ -1314,5 +1283,5 @@ CREATE POLICY "Users can delete own people images" ON storage.objects
 
 
 -- ============================================================
-SELECT '✅ Database setup complete: Gia phả riêng cho mỗi tài khoản với role system + Pricing + Posts with Images' AS status;
+SELECT 'database setup thành công system + Pricing + Posts with Images' AS status;
 -- ============================================================

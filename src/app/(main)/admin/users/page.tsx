@@ -50,11 +50,9 @@ import { supabase } from "@/lib/supabase";
 
 const ROLE_COLORS: Record<string, string> = {
   admin: "bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300",
-  editor: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
-  archivist:
-    "bg-purple-100 text-purple-800 dark:bg-purple-900 dark:text-purple-300",
-  member: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
-  guest: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
+  user: "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300",
+  guest: "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300",
+  viewer: "bg-gray-100 text-gray-800 dark:bg-gray-900 dark:text-gray-300",
 };
 
 interface ProfileUser {
@@ -272,12 +270,12 @@ export default function AdminUsersPage() {
               else setInviteDialogOpen(true);
             }}
           >
-            <DialogTrigger asChild>
+            {/* <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
                 Tạo link mời
               </Button>
-            </DialogTrigger>
+            </DialogTrigger> */}
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Tạo link mời thành viên</DialogTitle>
@@ -399,7 +397,12 @@ export default function AdminUsersPage() {
                           <DropdownMenuItem
                             onClick={() => handleChangeRole(user.id, "viewer")}
                           >
-                            Đặt viewer
+                            Đặt Viewer
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleChangeRole(user.id, "guest")}
+                          >
+                            Đặt Khách
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem
