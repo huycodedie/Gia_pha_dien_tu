@@ -19,7 +19,6 @@ interface Profile {
   display_name: string | null;
   role: UserRole;
   status: string;
-  person_handle: string | null;
   avatar_url: string | null;
   phone: string | null;
   guest_of: string | null;

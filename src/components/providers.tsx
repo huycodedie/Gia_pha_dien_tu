@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useState } from "react";
 import { AuthProvider } from "@/components/auth-provider";
 import { Toaster } from "sonner";
+import { DynamicTitle } from "@/components/dynamic-title";
 
 export function Providers({ children }: { children: React.ReactNode }) {
   const [queryClient] = useState(
@@ -28,6 +29,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
         disableTransitionOnChange
       >
         <AuthProvider>
+          <DynamicTitle />
           {children}
           <Toaster position="top-right" />
         </AuthProvider>

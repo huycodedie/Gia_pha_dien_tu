@@ -32,6 +32,24 @@ export function EditPersonDialog({
   );
   const [imageUrl, setImageUrl] = useState(person.imageUrl || "");
   const [imagePreview, setImagePreview] = useState(person.imageUrl || "");
+  const [birthYear, setBirthYear] = useState(
+    person.birthDate?.split("-")[0] ?? person.birthYear?.toString() ?? "",
+  );
+  const [birthMonth, setBirthMonth] = useState(
+    person.birthDate?.split("-")[1] ?? "",
+  );
+  const [birthDay, setBirthDay] = useState(
+    person.birthDate?.split("-")[2] ?? "",
+  );
+  const [deathYear, setDeathYear] = useState(
+    person.deathDate?.split("-")[0] ?? person.deathYear?.toString() ?? "",
+  );
+  const [deathMonth, setDeathMonth] = useState(
+    person.deathDate?.split("-")[1] ?? "",
+  );
+  const [deathDay, setDeathDay] = useState(
+    person.deathDate?.split("-")[2] ?? "",
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -100,8 +118,27 @@ export function EditPersonDialog({
     setSaving(true);
     setError("");
 
+    const birthDateStr =
+      birthYear && birthMonth && birthDay
+        ? `${birthYear.padStart(4, "0")}-${birthMonth.padStart(2, "0")}-${birthDay.padStart(
+            2,
+            "0",
+          )}`
+        : null;
+    const deathDateStr =
+      deathYear && deathMonth && deathDay
+        ? `${deathYear.padStart(4, "0")}-${deathMonth.padStart(2, "0")}-${deathDay.padStart(
+            2,
+            "0",
+          )}`
+        : null;
+
     const result = await updatePersonProfile(person.handle, {
       displayName: displayName.trim(),
+      birthYear: birthYear ? parseInt(birthYear, 10) : null,
+      birthDate: birthDateStr,
+      deathYear: deathYear ? parseInt(deathYear, 10) : null,
+      deathDate: deathDateStr,
       isLiving,
       phone: phone.trim() || null,
       facebook: facebook.trim() || null,
@@ -224,6 +261,50 @@ export function EditPersonDialog({
             />
           </div>
 
+          <div>
+            <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+              Ngày sinh
+            </label>
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <label className="text-[10px] text-slate-500">Năm</label>
+                <Input
+                  type="number"
+                  value={birthYear}
+                  onChange={(e) => setBirthYear(e.target.value)}
+                  placeholder="YYYY"
+                  className="text-sm"
+                  min="1800"
+                  max="2100"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] text-slate-500">Tháng</label>
+                <Input
+                  type="number"
+                  value={birthMonth}
+                  onChange={(e) => setBirthMonth(e.target.value)}
+                  placeholder="MM"
+                  className="text-sm"
+                  min="1"
+                  max="12"
+                />
+              </div>
+              <div className="flex-1">
+                <label className="text-[10px] text-slate-500">Ngày</label>
+                <Input
+                  type="number"
+                  value={birthDay}
+                  onChange={(e) => setBirthDay(e.target.value)}
+                  placeholder="DD"
+                  className="text-sm"
+                  min="1"
+                  max="31"
+                />
+              </div>
+            </div>
+          </div>
+
           {/* Living Status */}
           <div className="flex items-center gap-2">
             <input
@@ -240,6 +321,55 @@ export function EditPersonDialog({
               Còn sống
             </label>
           </div>
+
+          {isLiving === false && (
+            <div>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
+                Ngày mất
+              </label>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Năm</label>
+                  <Input
+                    type="number"
+                    value={deathYear}
+                    onChange={(e) => setDeathYear(e.target.value)}
+                    placeholder="YYYY"
+                    className="text-sm"
+                    min="1800"
+                    max="2100"
+                    disabled={isLiving}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Tháng</label>
+                  <Input
+                    type="number"
+                    value={deathMonth}
+                    onChange={(e) => setDeathMonth(e.target.value)}
+                    placeholder="MM"
+                    className="text-sm"
+                    min="1"
+                    max="12"
+                    disabled={isLiving}
+                  />
+                </div>
+                <div className="flex-1">
+                  <label className="text-[10px] text-slate-500">Ngày</label>
+                  <Input
+                    type="number"
+                    value={deathDay}
+                    onChange={(e) => setDeathDay(e.target.value)}
+                    placeholder="DD"
+                    className="text-sm"
+                    min="1"
+                    max="31"
+                    disabled={isLiving}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Contact Info */}
           <div className="space-y-3 pt-2 border-t">

@@ -786,7 +786,9 @@ export async function updatePersonProfile(
   updates: {
     displayName?: string;
     birthYear?: number | null;
+    birthDate?: string | null;
     deathYear?: number | null;
+    deathDate?: string | null;
     isLiving?: boolean;
     phone?: string | null;
     facebook?: string | null;
@@ -800,8 +802,12 @@ export async function updatePersonProfile(
     updateData.display_name = updates.displayName;
   if (updates.birthYear !== undefined)
     updateData.birth_year = updates.birthYear;
+  if (updates.birthDate !== undefined)
+    updateData.birth_date = updates.birthDate;
   if (updates.deathYear !== undefined)
     updateData.death_year = updates.deathYear;
+  if (updates.deathDate !== undefined)
+    updateData.death_date = updates.deathDate;
   if (updates.isLiving !== undefined) updateData.is_living = updates.isLiving;
   if (updates.phone !== undefined) updateData.phone = updates.phone;
   if (updates.facebook !== undefined) updateData.facebook = updates.facebook;

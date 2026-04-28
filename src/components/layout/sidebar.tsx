@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useAuth } from "@/components/auth-provider";
 
 const adminItems = [
@@ -37,6 +37,17 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { isAdmin, profile, isLoggedIn } = useAuth();
+  const familyName = useMemo(() => {
+    if (profile?.display_name) {
+      // Extract family name from display name
+      // For Vietnamese names, take first 2 words as surname
+      const nameParts = profile.display_name.trim().split(" ");
+      return nameParts.length >= 2
+        ? nameParts.slice(0, 2).join(" ")
+        : profile.display_name;
+    }
+    return "";
+  }, [profile]);
 
   const baseNavItems = [
     { href: "/", label: "Trang chủ", icon: Home },
@@ -57,7 +68,7 @@ export function Sidebar() {
     ...(profile?.role === "user"
       ? [{ href: "/guests", label: "Tài khoản khách", icon: Shield }]
       : []),
-    ...(profile?.role !== "guest" && isLoggedIn
+    ...(profile?.role === "user" || profile?.role === "viewer" && isLoggedIn
       ? [{ href: "/pricing", label: "Nâng cấp", icon: Crown }]
       : []),
     // { href: "/media", label: "Thư viện", icon: Image },
@@ -72,7 +83,11 @@ export function Sidebar() {
     >
       <div className="flex items-center gap-2 px-4 py-4 border-b">
         <TreePine className="h-6 w-6 text-primary shrink-0" />
-        {!collapsed && <span className="font-bold text-lg">Gia phả họ</span>}
+        {!collapsed && (
+          <span className="font-bold text-lg">
+            Gia phả họ {familyName || ""}
+          </span>
+        )}
       </div>
 
       <nav className="flex-1 px-2 py-4 space-y-1 overflow-y-auto">
@@ -132,7 +147,11 @@ export function Sidebar() {
       {!collapsed && (
         <div className="border-t px-4 py-3">
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Có vấn đề với <span className="font-semibold text-foreground">gia phả điện tử</span> hãy liên hệ với số điện thoại sau
+            Có vấn đề với{" "}
+            <span className="font-semibold text-foreground">
+              gia phả điện tử
+            </span>{" "}
+            hãy liên hệ với số điện thoại sau
             <br />
             <span className="font-semibold text-foreground">0775 110 663</span>
             <br />

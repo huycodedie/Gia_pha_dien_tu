@@ -320,14 +320,14 @@ export default function PersonProfilePage() {
                   value={zodiacYear(person.birthYear) || "—"}
                 />
               )}
-              <InfoRow label="Nơi sinh" value={person.birthPlace || "—"} />
+              {/* <InfoRow label="Nơi sinh" value={person.birthPlace || "—"} /> */}
               {person.deathDate && (
                 <>
                   <InfoRow
                     label="Ngày mất"
                     value={formatDateVN(person.deathDate)}
                   />
-                  <InfoRow label="Nơi mất" value={person.deathPlace || "—"} />
+                  {/* <InfoRow label="Nơi mất" value={person.deathPlace || "—"} /> */}
                 </>
               )}
             </CardContent>
