@@ -372,6 +372,613 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- Override kinship function with stricter relationship checks.
+CREATE OR REPLACE FUNCTION get_kinship_relationship(
+    p_person1_handle TEXT,
+    p_person2_handle TEXT
+)
+RETURNS TEXT AS $$
+DECLARE
+    person1 RECORD;
+    person2 RECORD;
+    ancestor_distance INT;
+    descendant_distance INT;
+    sibling_link_gender INT;
+    grand_sibling_gender INT;
+    spouse_generation_link_gender INT;
+    spouse_child_gender INT;
+BEGIN
+    SELECT * INTO person1 FROM people WHERE handle = p_person1_handle LIMIT 1;
+    SELECT * INTO person2 FROM people WHERE handle = p_person2_handle LIMIT 1;
+
+    IF person1 IS NULL OR person2 IS NULL THEN
+        RETURN 'Không xác định';
+    END IF;
+
+    IF p_person1_handle = p_person2_handle THEN
+        RETURN 'Chính mình';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM families
+        WHERE (father_handle = p_person1_handle AND mother_handle = p_person2_handle)
+           OR (father_handle = p_person2_handle AND mother_handle = p_person1_handle)
+    ) THEN
+        IF person2.gender = 1 THEN
+            RETURN 'Chồng';
+        ELSIF person2.gender = 2 THEN
+            RETURN 'Vợ';
+        END IF;
+        RETURN 'Vợ/Chồng';
+    END IF;
+
+    WITH RECURSIVE ancestors(ancestor_handle, distance) AS (
+        SELECT parent_handle, 1
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+        ) direct_parents
+        WHERE parent_handle IS NOT NULL
+
+        UNION
+
+        SELECT parent.parent_handle, ancestors.distance + 1
+        FROM ancestors
+        JOIN LATERAL (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[ancestors.ancestor_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[ancestors.ancestor_handle]
+        ) parent ON parent.parent_handle IS NOT NULL
+    )
+    SELECT MIN(distance)
+    INTO ancestor_distance
+    FROM ancestors
+    WHERE ancestor_handle = p_person2_handle;
+
+    IF ancestor_distance IS NOT NULL THEN
+        IF ancestor_distance = 1 THEN
+            IF person2.gender = 1 THEN RETURN 'Cha'; ELSE RETURN 'Mẹ'; END IF;
+        ELSIF ancestor_distance = 2 THEN
+            IF person2.gender = 1 THEN RETURN 'Ông'; ELSE RETURN 'Bà'; END IF;
+        ELSIF ancestor_distance = 3 THEN
+            RETURN 'Cụ';
+        ELSIF ancestor_distance = 4 THEN
+            RETURN 'Cao tổ';
+        ELSE
+            RETURN 'Tổ tiên';
+        END IF;
+    END IF;
+
+    WITH RECURSIVE descendants(descendant_handle, distance) AS (
+        SELECT child_handle, 1
+        FROM (
+            SELECT unnest(children) AS child_handle
+            FROM families
+            WHERE father_handle = p_person1_handle OR mother_handle = p_person1_handle
+        ) direct_children
+
+        UNION
+
+        SELECT child.child_handle, descendants.distance + 1
+        FROM descendants
+        JOIN LATERAL (
+            SELECT unnest(children) AS child_handle
+            FROM families
+            WHERE father_handle = descendants.descendant_handle
+               OR mother_handle = descendants.descendant_handle
+        ) child ON true
+    )
+    SELECT MIN(distance)
+    INTO descendant_distance
+    FROM descendants
+    WHERE descendant_handle = p_person2_handle;
+
+    IF descendant_distance IS NOT NULL THEN
+        IF descendant_distance = 1 THEN
+            IF person2.gender = 1 THEN RETURN 'Con trai'; ELSE RETURN 'Con gái'; END IF;
+        ELSIF descendant_distance = 2 THEN
+            IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+        ELSIF descendant_distance = 3 THEN
+            RETURN 'Chắt';
+        ELSIF descendant_distance = 4 THEN
+            RETURN 'Chút';
+        ELSE
+            RETURN 'Hậu duệ';
+        END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM families
+        WHERE children @> ARRAY[p_person1_handle]
+          AND children @> ARRAY[p_person2_handle]
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Anh/Em trai'; ELSE RETURN 'Chị/Em gái'; END IF;
+    END IF;
+
+    -- Vợ/chồng của anh chị em ruột
+    SELECT sibling_person.gender
+    INTO sibling_link_gender
+    FROM families sibling_family
+    CROSS JOIN LATERAL unnest(sibling_family.children) AS sibling_handle
+    JOIN people sibling_person ON sibling_person.handle = sibling_handle
+    JOIN families spouse_family
+      ON (spouse_family.father_handle = sibling_handle AND spouse_family.mother_handle = p_person1_handle)
+      OR (spouse_family.mother_handle = sibling_handle AND spouse_family.father_handle = p_person1_handle)
+    WHERE sibling_family.children @> ARRAY[p_person2_handle]
+      AND sibling_handle <> p_person2_handle
+    LIMIT 1;
+
+    IF sibling_link_gender IS NOT NULL THEN
+        IF sibling_link_gender = 1 THEN
+            IF person2.gender = 1 THEN
+                RETURN 'Anh/Em chồng';
+            ELSE
+                RETURN 'Chị/Em chồng';
+            END IF;
+        ELSIF sibling_link_gender = 2 THEN
+            IF person2.gender = 1 THEN
+                RETURN 'Anh/Em vợ';
+            ELSE
+                RETURN 'Chị/Em vợ';
+            END IF;
+        END IF;
+    END IF;
+
+    SELECT sibling_person.gender
+    INTO sibling_link_gender
+    FROM families sibling_family
+    CROSS JOIN LATERAL unnest(sibling_family.children) AS sibling_handle
+    JOIN people sibling_person ON sibling_person.handle = sibling_handle
+    JOIN families spouse_family
+      ON (spouse_family.father_handle = sibling_handle AND spouse_family.mother_handle = p_person2_handle)
+      OR (spouse_family.mother_handle = sibling_handle AND spouse_family.father_handle = p_person2_handle)
+    WHERE sibling_family.children @> ARRAY[p_person1_handle]
+      AND sibling_handle <> p_person1_handle
+    LIMIT 1;
+
+    IF sibling_link_gender IS NOT NULL THEN
+        IF sibling_link_gender = 1 THEN
+            RETURN 'Chị/Em dâu';
+        ELSIF sibling_link_gender = 2 THEN
+            RETURN 'Anh/Em rể';
+        END IF;
+    END IF;
+
+    -- Vợ/chồng của anh chị em ruột nhìn nhau
+    SELECT sibling_person.gender
+    INTO spouse_generation_link_gender
+    FROM families sibling_family
+    CROSS JOIN LATERAL unnest(sibling_family.children) AS sibling1_handle
+    JOIN people sibling_person ON sibling_person.handle = sibling1_handle
+    JOIN families spouse_family_1
+      ON (spouse_family_1.father_handle = sibling1_handle AND spouse_family_1.mother_handle = p_person1_handle)
+      OR (spouse_family_1.mother_handle = sibling1_handle AND spouse_family_1.father_handle = p_person1_handle)
+    CROSS JOIN LATERAL unnest(sibling_family.children) AS sibling2_handle
+    JOIN families spouse_family_2
+      ON (spouse_family_2.father_handle = sibling2_handle AND spouse_family_2.mother_handle = p_person2_handle)
+      OR (spouse_family_2.mother_handle = sibling2_handle AND spouse_family_2.father_handle = p_person2_handle)
+    WHERE sibling1_handle <> sibling2_handle
+    LIMIT 1;
+
+    IF spouse_generation_link_gender IS NOT NULL THEN
+        IF person2.gender = 1 THEN
+            RETURN 'Anh/Em rể';
+        ELSIF person2.gender = 2 THEN
+            RETURN 'Chị/Em dâu';
+        END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+        ) p1_parents
+        JOIN families sibling_family
+          ON sibling_family.children @> ARRAY[p1_parents.parent_handle]
+        WHERE p1_parents.parent_handle IS NOT NULL
+          AND sibling_family.children @> ARRAY[p_person2_handle]
+          AND p1_parents.parent_handle <> p_person2_handle
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Chú/Bác/Cậu'; ELSE RETURN 'Cô/Dì'; END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person2_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person2_handle]
+        ) p2_parents
+        JOIN families sibling_family
+          ON sibling_family.children @> ARRAY[p2_parents.parent_handle]
+        WHERE p2_parents.parent_handle IS NOT NULL
+          AND sibling_family.children @> ARRAY[p_person1_handle]
+          AND p2_parents.parent_handle <> p_person1_handle
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+    END IF;
+
+    -- Vợ/chồng của anh/chị/em ruột của ông/bà
+    SELECT grand_sibling_person.gender
+    INTO grand_sibling_gender
+    FROM (
+        SELECT grandparent_handle
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+        ) parents
+        JOIN LATERAL (
+            SELECT father_handle AS grandparent_handle
+            FROM families
+            WHERE children @> ARRAY[parents.parent_handle]
+            UNION
+            SELECT mother_handle AS grandparent_handle
+            FROM families
+            WHERE children @> ARRAY[parents.parent_handle]
+        ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+    ) p1_grandparents
+    JOIN families grand_sibling_family
+      ON grand_sibling_family.children @> ARRAY[p1_grandparents.grandparent_handle]
+    CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+    JOIN people grand_sibling_person ON grand_sibling_person.handle = grand_sibling_handle
+    JOIN families spouse_family
+      ON (spouse_family.father_handle = grand_sibling_handle AND spouse_family.mother_handle = p_person2_handle)
+      OR (spouse_family.mother_handle = grand_sibling_handle AND spouse_family.father_handle = p_person2_handle)
+    WHERE grand_sibling_handle <> p1_grandparents.grandparent_handle
+    LIMIT 1;
+
+    IF grand_sibling_gender IS NOT NULL THEN
+        IF grand_sibling_gender = 1 THEN
+            RETURN 'Bà mự/bác';
+        ELSIF grand_sibling_gender = 2 THEN
+            RETURN 'Ông chú/dượng';
+        END IF;
+    END IF;
+
+    -- Chiều ngược lại: ông/bà đời trên nhìn về cháu
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p2_grandparents
+        JOIN families sibling_family
+          ON sibling_family.children @> ARRAY[p2_grandparents.grandparent_handle]
+        WHERE sibling_family.children @> ARRAY[p_person1_handle]
+          AND p2_grandparents.grandparent_handle <> p_person1_handle
+    ) THEN
+        IF person2.gender = 1 THEN
+            RETURN 'Cháu trai';
+        ELSE
+            RETURN 'Cháu gái';
+        END IF;
+    END IF;
+
+    SELECT grand_sibling_person.gender
+    INTO grand_sibling_gender
+    FROM (
+        SELECT grandparent_handle
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person2_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person2_handle]
+        ) parents
+        JOIN LATERAL (
+            SELECT father_handle AS grandparent_handle
+            FROM families
+            WHERE children @> ARRAY[parents.parent_handle]
+            UNION
+            SELECT mother_handle AS grandparent_handle
+            FROM families
+            WHERE children @> ARRAY[parents.parent_handle]
+        ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+    ) p2_grandparents
+    JOIN families grand_sibling_family
+      ON grand_sibling_family.children @> ARRAY[p2_grandparents.grandparent_handle]
+    CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+    JOIN people grand_sibling_person ON grand_sibling_person.handle = grand_sibling_handle
+    JOIN families spouse_family
+      ON (spouse_family.father_handle = grand_sibling_handle AND spouse_family.mother_handle = p_person1_handle)
+      OR (spouse_family.mother_handle = grand_sibling_handle AND spouse_family.father_handle = p_person1_handle)
+    WHERE grand_sibling_handle <> p2_grandparents.grandparent_handle
+    LIMIT 1;
+
+    IF grand_sibling_gender IS NOT NULL THEN
+        IF person2.gender = 1 THEN
+            RETURN 'Cháu trai';
+        ELSE
+            RETURN 'Cháu gái';
+        END IF;
+    END IF;
+
+    -- Cháu nhìn con của ông chú/bác/cô/dì như bác/chú/cậu/cô/dì và chiều ngược lại
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p1_grandparents
+        JOIN families grand_sibling_family
+          ON grand_sibling_family.children @> ARRAY[p1_grandparents.grandparent_handle]
+        CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+        JOIN families child_of_grand_sibling_family
+          ON child_of_grand_sibling_family.father_handle = grand_sibling_handle
+          OR child_of_grand_sibling_family.mother_handle = grand_sibling_handle
+        WHERE grand_sibling_handle <> p1_grandparents.grandparent_handle
+          AND child_of_grand_sibling_family.children @> ARRAY[p_person2_handle]
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Chú/Bác/Cậu'; ELSE RETURN 'Cô/Dì'; END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p2_grandparents
+        JOIN families grand_sibling_family
+          ON grand_sibling_family.children @> ARRAY[p2_grandparents.grandparent_handle]
+        CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+        JOIN families child_of_grand_sibling_family
+          ON child_of_grand_sibling_family.father_handle = grand_sibling_handle
+          OR child_of_grand_sibling_family.mother_handle = grand_sibling_handle
+        WHERE grand_sibling_handle <> p2_grandparents.grandparent_handle
+          AND child_of_grand_sibling_family.children @> ARRAY[p_person1_handle]
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+    END IF;
+
+    -- Vợ/chồng của cháu nhìn về chú/bác/cậu/cô/dì
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT father_handle AS nephew_handle
+            FROM families
+            WHERE mother_handle = p_person1_handle
+            UNION
+            SELECT mother_handle AS nephew_handle
+            FROM families
+            WHERE father_handle = p_person1_handle
+        ) spouse_side
+        WHERE nephew_handle IS NOT NULL
+          AND EXISTS (
+              SELECT 1
+              FROM (
+                  SELECT father_handle AS parent_handle
+                  FROM families
+                  WHERE children @> ARRAY[spouse_side.nephew_handle]
+                  UNION
+                  SELECT mother_handle AS parent_handle
+                  FROM families
+                  WHERE children @> ARRAY[spouse_side.nephew_handle]
+              ) nephew_parents
+              JOIN families sibling_family
+                ON sibling_family.children @> ARRAY[nephew_parents.parent_handle]
+              WHERE nephew_parents.parent_handle IS NOT NULL
+                AND sibling_family.children @> ARRAY[p_person2_handle]
+                AND nephew_parents.parent_handle <> p_person2_handle
+          )
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Chú/Bác/Cậu'; ELSE RETURN 'Cô/Dì'; END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT father_handle AS nephew_handle
+            FROM families
+            WHERE mother_handle = p_person2_handle
+            UNION
+            SELECT mother_handle AS nephew_handle
+            FROM families
+            WHERE father_handle = p_person2_handle
+        ) spouse_side
+        WHERE nephew_handle IS NOT NULL
+          AND EXISTS (
+              SELECT 1
+              FROM (
+                  SELECT father_handle AS parent_handle
+                  FROM families
+                  WHERE children @> ARRAY[spouse_side.nephew_handle]
+                  UNION
+                  SELECT mother_handle AS parent_handle
+                  FROM families
+                  WHERE children @> ARRAY[spouse_side.nephew_handle]
+              ) nephew_parents
+              JOIN families sibling_family
+                ON sibling_family.children @> ARRAY[nephew_parents.parent_handle]
+              WHERE nephew_parents.parent_handle IS NOT NULL
+                AND sibling_family.children @> ARRAY[p_person1_handle]
+                AND nephew_parents.parent_handle <> p_person1_handle
+          )
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+    END IF;
+
+    -- Anh/chị/em ruột của ông/bà
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p1_grandparents
+        JOIN families sibling_family
+          ON sibling_family.children @> ARRAY[p1_grandparents.grandparent_handle]
+        WHERE sibling_family.children @> ARRAY[p_person2_handle]
+          AND p1_grandparents.grandparent_handle <> p_person2_handle
+    ) THEN
+        IF person2.gender = 1 THEN
+            RETURN 'Ông chú/bác';
+        ELSE
+            RETURN 'Bà cô/dì';
+        END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+        ) p1_parents
+        JOIN (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person2_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person2_handle]
+        ) p2_parents
+          ON p1_parents.parent_handle IS NOT NULL
+         AND p2_parents.parent_handle IS NOT NULL
+         AND p1_parents.parent_handle <> p2_parents.parent_handle
+        JOIN families parent_sibling_family
+          ON parent_sibling_family.children @> ARRAY[p1_parents.parent_handle]
+         AND parent_sibling_family.children @> ARRAY[p2_parents.parent_handle]
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Anh/Em họ trai'; ELSE RETURN 'Anh/Em họ gái'; END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM families own_family
+        CROSS JOIN LATERAL unnest(own_family.children) AS child_handle
+        JOIN families child_family
+          ON (child_family.father_handle = child_handle AND child_family.mother_handle = p_person2_handle)
+          OR (child_family.mother_handle = child_handle AND child_family.father_handle = p_person2_handle)
+        WHERE own_family.father_handle = p_person1_handle
+           OR own_family.mother_handle = p_person1_handle
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Con rể'; ELSE RETURN 'Con dâu'; END IF;
+    END IF;
+
+    SELECT child_person.gender
+    INTO spouse_child_gender
+    FROM families own_family
+    CROSS JOIN LATERAL unnest(own_family.children) AS child_handle
+    JOIN people child_person ON child_person.handle = child_handle
+    JOIN families child_family
+      ON (child_family.father_handle = child_handle AND child_family.mother_handle = p_person1_handle)
+      OR (child_family.mother_handle = child_handle AND child_family.father_handle = p_person1_handle)
+    WHERE own_family.father_handle = p_person2_handle
+       OR own_family.mother_handle = p_person2_handle
+    LIMIT 1;
+
+    IF spouse_child_gender IS NOT NULL THEN
+        IF spouse_child_gender = 1 THEN
+            IF person2.gender = 1 THEN RETURN 'Bố chồng'; ELSE RETURN 'Mẹ chồng'; END IF;
+        ELSIF spouse_child_gender = 2 THEN
+            IF person2.gender = 1 THEN RETURN 'Bố vợ'; ELSE RETURN 'Mẹ vợ'; END IF;
+        END IF;
+    END IF;
+
+    RETURN 'Quan hệ khác';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
 
 
 DROP TABLE IF EXISTS profiles;
@@ -1085,8 +1692,10 @@ BEGIN
     -- Get plan details
     SELECT * INTO plan_record FROM plans WHERE id = p_plan_id;
 
-    -- Calculate expiration
-    expires_at := now() + INTERVAL '1 day' * plan_record.duration_days;
+    -- Calculate expiration - calculate as exact hours from now
+    -- Example: If duration_days = 3, then expires_at = now() + 72 hours
+    -- This ensures precise timing regardless of when user purchases (not based on calendar days)
+    expires_at := now() + INTERVAL '1 hour' * (plan_record.duration_days * 24);
 
     -- Create subscription
     INSERT INTO subscriptions (user_id, plan_id, expires_at)
@@ -1285,3 +1894,4 @@ CREATE POLICY "Users can delete own people images" ON storage.objects
 -- ============================================================
 SELECT 'database setup thành công system + Pricing + Posts with Images' AS status;
 -- ============================================================
+    

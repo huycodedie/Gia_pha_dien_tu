@@ -305,6 +305,7 @@ export default function TreeViewPage() {
   const [kinshipRelationship, setKinshipRelationship] = useState<string | null>(
     null,
   );
+  const [kinshipError, setKinshipError] = useState<string | null>(null);
   const { isAdmin, profile } = useAuth();
 
   // Check if user has their own family tree
@@ -860,12 +861,31 @@ export default function TreeViewPage() {
 
   // Fetch kinship relationship when 2 people are selected
   useEffect(() => {
+    let cancelled = false;
+
     if (kinshipSelection && kinshipSelection[1] !== "") {
       const [person1, person2] = kinshipSelection;
-      getKinshipRelationship(person1, person2).then(({ relationship }) => {
-        setKinshipRelationship(relationship);
-      });
+      setKinshipRelationship(null);
+      setKinshipError(null);
+
+      getKinshipRelationship(person1, person2).then(
+        ({ relationship, error }) => {
+          if (cancelled) return;
+          if (error) {
+            setKinshipError(error);
+            return;
+          }
+          setKinshipRelationship(relationship || "Không xác định");
+        },
+      );
+    } else {
+      setKinshipRelationship(null);
+      setKinshipError(null);
     }
+
+    return () => {
+      cancelled = true;
+    };
   }, [kinshipSelection]);
 
   const handleCardFocus = useCallback((handle: string) => {
@@ -1322,6 +1342,7 @@ export default function TreeViewPage() {
                       setKinshipMode(false);
                       setKinshipSelection(null);
                       setKinshipRelationship(null);
+                      setKinshipError(null);
                     }}
                   >
                     <Pencil className="h-3.5 w-3.5" />
@@ -1345,6 +1366,7 @@ export default function TreeViewPage() {
                       setKinshipMode((m) => !m);
                       setKinshipSelection(null);
                       setKinshipRelationship(null);
+                      setKinshipError(null);
                     }}
                   >
                     <Users className="h-3.5 w-3.5" />
@@ -1622,6 +1644,16 @@ export default function TreeViewPage() {
                       )?.displayName || kinshipSelection[1]}
                     </span>
                   </div>
+                  {kinshipError && (
+                    <div className="bg-red-50 border border-red-200 rounded p-2 text-sm font-medium text-red-700">
+                      {kinshipError}
+                    </div>
+                  )}
+                  {!kinshipError && !kinshipRelationship && (
+                    <div className="bg-muted/50 border rounded p-2 text-sm text-muted-foreground">
+                      Đang tính quan hệ...
+                    </div>
+                  )}
                   {kinshipRelationship && (
                     <div className="bg-purple-50 border border-purple-200 rounded p-2 text-sm font-semibold text-purple-900">
                       {kinshipRelationship}
@@ -1634,6 +1666,7 @@ export default function TreeViewPage() {
                     onClick={() => {
                       setKinshipSelection(null);
                       setKinshipRelationship(null);
+                      setKinshipError(null);
                     }}
                   >
                     Chọn Lại

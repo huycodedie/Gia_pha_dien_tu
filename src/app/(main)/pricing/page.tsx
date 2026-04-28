@@ -52,6 +52,14 @@ interface Subscription {
   expires_at: string;
 }
 
+interface PlanUsage {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  usage_count: number;
+  last_used_at: string;
+}
+
 interface PaymentOrder {
   id: string;
   plan_id: string;
@@ -95,6 +103,7 @@ export default function PricingPage() {
   const [plans, setPlans] = useState<Plan[]>([]);
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [paymentOrders, setPaymentOrders] = useState<PaymentOrder[]>([]);
+  const [planUsage, setPlanUsage] = useState<PlanUsage[]>([]);
   const [loading, setLoading] = useState(true);
   const [upgrading, setUpgrading] = useState<string | null>(null);
   const [activeOrder, setActiveOrder] = useState<ActiveManualOrder | null>(
@@ -139,6 +148,17 @@ export default function PricingPage() {
     setPaymentOrders(processedData as PaymentOrder[]);
   }, [user]);
 
+  const fetchPlanUsage = useCallback(async () => {
+    if (!user) return;
+
+    const { data } = await supabase
+      .from("user_plan_usage")
+      .select("*")
+      .eq("user_id", user.id);
+
+    if (data) setPlanUsage(data as PlanUsage[]);
+  }, [user]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -146,11 +166,28 @@ export default function PricingPage() {
       setLoading(true);
       await fetchPlans();
 
-      if (user) {
-        await Promise.all([fetchSubscriptions(), fetchPendingOrders()]);
+      if (user && session?.access_token) {
+        // Check and auto-downgrade expired subscriptions
+        try {
+          await fetch("/api/subscriptions/check-expired", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${session.access_token}`,
+            },
+          });
+        } catch (error) {
+          console.error("Error checking expired subscriptions:", error);
+        }
+
+        await Promise.all([
+          fetchSubscriptions(),
+          fetchPendingOrders(),
+          fetchPlanUsage(),
+        ]);
       } else if (!cancelled) {
         setSubscriptions([]);
         setPaymentOrders([]);
+        setPlanUsage([]);
       }
 
       if (!cancelled) {
@@ -163,7 +200,14 @@ export default function PricingPage() {
     return () => {
       cancelled = true;
     };
-  }, [fetchPendingOrders, fetchPlans, fetchSubscriptions, user]);
+  }, [
+    fetchPendingOrders,
+    fetchPlans,
+    fetchSubscriptions,
+    fetchPlanUsage,
+    user,
+    session?.access_token,
+  ]);
 
   const upgradeRole = async (planId: string) => {
     if (!user) return;
@@ -272,17 +316,32 @@ export default function PricingPage() {
     return paymentOrders.find((order) => order.plan_id === planId);
   };
 
+  const getPlanUsage = (planId: string) => {
+    return planUsage.find((usage) => usage.plan_id === planId);
+  };
+
   const isPlanAvailable = (plan: Plan) => {
     const currentSub = getCurrentSubscription(plan.id);
-    if (currentSub) return false;
+    // Check if current subscription is still active (not expired)
+    if (currentSub && new Date(currentSub.expires_at) > new Date()) {
+      return false;
+    }
 
-    // Check if user has any active subscription for other plans
+    // Check if user has any other active subscription
     const hasActiveSubscription = subscriptions.some((sub) => {
       if (sub.plan_id === plan.id) return false; // Skip current plan check
       return sub.status === "active" && new Date(sub.expires_at) > new Date();
     });
 
     if (hasActiveSubscription) return false;
+
+    // Check free plan usage limit
+    if (plan.is_free && plan.max_uses !== null) {
+      const usage = getPlanUsage(plan.id);
+      if (usage && usage.usage_count >= plan.max_uses) {
+        return false;
+      }
+    }
 
     if (plan.is_free) {
       return true;
@@ -456,19 +515,47 @@ export default function PricingPage() {
                   )}
                 </div>
 
-                {currentSub && (
+                {currentSub && new Date(currentSub.expires_at) > new Date() && (
                   <div className="p-3 bg-blue-50 rounded-lg">
                     <div className="text-sm font-medium text-blue-800">
                       Đang active
                     </div>
                     <div className="text-xs text-blue-600">
                       Hết hạn:{" "}
-                      {new Date(currentSub.expires_at).toLocaleDateString(
-                        "vi-VN",
-                      )}
+                      {new Date(currentSub.expires_at).toLocaleString("vi-VN")}
                     </div>
                   </div>
                 )}
+
+                {currentSub &&
+                  new Date(currentSub.expires_at) <= new Date() && (
+                    <div className="p-3 bg-gray-50 rounded-lg border border-gray-300">
+                      <div className="text-sm font-medium text-gray-700">
+                        Đã hết hạn
+                      </div>
+                      <div className="text-xs text-gray-600">
+                        Hết hạn lúc:{" "}
+                        {new Date(currentSub.expires_at).toLocaleString(
+                          "vi-VN",
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                {plan.is_free &&
+                  plan.max_uses !== null &&
+                  getPlanUsage(plan.id) &&
+                  getPlanUsage(plan.id)!.usage_count >= plan.max_uses && (
+                    <div className="p-3 bg-red-50 rounded-lg border border-red-300">
+                      <div className="text-sm font-medium text-red-700">
+                        Đã dùng hết lần miễn phí
+                      </div>
+                      <div className="text-xs text-red-600">
+                        Bạn đã dùng {plan.max_uses} lần. Không thể dùng thêm gói
+                        này.
+                      </div>
+                    </div>
+                  )}
 
                 {pendingOrder && (
                   <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
@@ -489,6 +576,12 @@ export default function PricingPage() {
                     upgrading === plan.id ||
                     (loading && !plan.is_free);
 
+                  const hasReachedFreeLimit =
+                    plan.is_free &&
+                    plan.max_uses !== null &&
+                    getPlanUsage(plan.id) &&
+                    getPlanUsage(plan.id)!.usage_count >= plan.max_uses;
+
                   if (isDisabled && activeSub && !currentSub) {
                     return (
                       <div className="space-y-2">
@@ -500,6 +593,14 @@ export default function PricingPage() {
                           Không thể mua
                         </Button>
                       </div>
+                    );
+                  }
+
+                  if (hasReachedFreeLimit) {
+                    return (
+                      <Button className="w-full" disabled={true}>
+                        Đã dùng hết lần miễn phí
+                      </Button>
                     );
                   }
 
@@ -522,7 +623,8 @@ export default function PricingPage() {
                         <>Đang xử lý...</>
                       ) : !user ? (
                         "Đăng nhập để nâng cấp"
-                      ) : currentSub ? (
+                      ) : currentSub &&
+                        new Date(currentSub.expires_at) > new Date() ? (
                         "Đang sử dụng"
                       ) : plan.is_free ? (
                         "Dùng thử miễn phí"
