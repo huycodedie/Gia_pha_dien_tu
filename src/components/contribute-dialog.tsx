@@ -511,6 +511,24 @@ export function AddSpouseDialog({
               </div>
             </div>
 
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isLiving"
+                checked={isLiving}
+                onChange={(e) => setIsLiving(e.target.checked)}
+                className="rounded"
+              />
+              <label
+                htmlFor="isLiving"
+                className="text-xs text-slate-600 dark:text-slate-400"
+              >
+                Còn sống
+              </label>
+            </div>
+
+
+            {isLiving === false && (
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
                 Ngày mất
@@ -557,23 +575,8 @@ export function AddSpouseDialog({
                 </div>
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isLiving"
-                checked={isLiving}
-                onChange={(e) => setIsLiving(e.target.checked)}
-                className="rounded"
-              />
-              <label
-                htmlFor="isLiving"
-                className="text-xs text-slate-600 dark:text-slate-400"
-              >
-                Còn sống
-              </label>
-            </div>
-
+            )}
+            
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
@@ -882,6 +885,23 @@ export function AddChildDialog({
               </div>
             </div>
 
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="isLiving"
+                checked={isLiving}
+                onChange={(e) => setIsLiving(e.target.checked)}
+                className="rounded"
+              />
+              <label
+                htmlFor="isLiving"
+                className="text-xs text-slate-600 dark:text-slate-400"
+              >
+                Còn sống
+              </label>
+            </div>
+
+            {isLiving === false && (
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1.5 block">
                 Ngày mất
@@ -928,22 +948,8 @@ export function AddChildDialog({
                 </div>
               </div>
             </div>
-
-            <div className="flex items-center gap-2">
-              <input
-                type="checkbox"
-                id="isLiving"
-                checked={isLiving}
-                onChange={(e) => setIsLiving(e.target.checked)}
-                className="rounded"
-              />
-              <label
-                htmlFor="isLiving"
-                className="text-xs text-slate-600 dark:text-slate-400"
-              >
-                Còn sống
-              </label>
-            </div>
+            )}
+            
 
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
