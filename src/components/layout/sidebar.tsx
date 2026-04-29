@@ -21,8 +21,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useAuth } from "@/components/auth-provider";
+import { supabase } from "@/lib/supabase";
+import { useFamilyName } from "@/lib/use-family-name";
 
 const adminItems = [
   { href: "/admin/users", label: "Quản lý Users", icon: Shield },
@@ -37,17 +39,7 @@ export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const { isAdmin, profile, isLoggedIn } = useAuth();
-  const familyName = useMemo(() => {
-    if (profile?.display_name) {
-      // Extract family name from display name
-      // For Vietnamese names, take first 2 words as surname
-      const nameParts = profile.display_name.trim().split(" ");
-      return nameParts.length >= 2
-        ? nameParts.slice(0, 2).join(" ")
-        : profile.display_name;
-    }
-    return "";
-  }, [profile]);
+  const familyName = useFamilyName();
 
   const baseNavItems = [
     { href: "/", label: "Trang chủ", icon: Home },
@@ -68,7 +60,7 @@ export function Sidebar() {
     ...(profile?.role === "user"
       ? [{ href: "/guests", label: "Tài khoản khách", icon: Shield }]
       : []),
-    ...(profile?.role === "user" || profile?.role === "viewer" && isLoggedIn
+    ...(profile?.role === "user" || (profile?.role === "viewer" && isLoggedIn)
       ? [{ href: "/pricing", label: "Nâng cấp", icon: Crown }]
       : []),
     // { href: "/media", label: "Thư viện", icon: Image },
@@ -85,7 +77,9 @@ export function Sidebar() {
         <TreePine className="h-6 w-6 text-primary shrink-0" />
         {!collapsed && (
           <span className="font-bold text-lg">
-            Gia phả họ {familyName || ""}
+            {familyName === "Quản trị"
+              ? familyName
+              : `Gia phả họ ${familyName || ""}`}
           </span>
         )}
       </div>

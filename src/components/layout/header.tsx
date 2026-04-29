@@ -35,7 +35,7 @@ export function Header() {
             {/* Left side */}
             <div className="flex items-center gap-2">
                 <h2 className="text-sm font-medium text-muted-foreground">
-                    Gia phả dòng họ {profile?.display_name || ''}
+                    Tài khoản {profile?.display_name || ''}
                 </h2>
             </div>
 
