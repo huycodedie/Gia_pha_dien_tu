@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
   Table,
@@ -28,6 +29,7 @@ export default function BackupPage() {
   const [creating, setCreating] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [lastBackup, setLastBackup] = useState<string | null>(null);
+  const [backupKey, setBackupKey] = useState("");
   const [message, setMessage] = useState<{
     type: "success" | "error";
     text: string;
@@ -116,30 +118,39 @@ export default function BackupPage() {
       const content = await file.text();
       const backupData = JSON.parse(content);
 
+      if (!backupKey.trim()) {
+        throw new Error("Vui lòng nhập mật mã khôi phục.");
+      }
+
       // Get auth token
       const {
         data: { session },
       } = await supabase.auth.getSession();
       const token = session?.access_token;
 
-      if (!token) {
-        throw new Error("Not authenticated");
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (token) {
+        headers.Authorization = `Bearer ${token}`;
       }
 
       // Call restore API
       const response = await fetch("/api/admin/backup/restore", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ backup: backupData }),
+        headers,
+        body: JSON.stringify({ backup: backupData, backupKey }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.error || "Restore failed");
+        const errorMessage =
+          result.error === "Invalid backup key"
+            ? "Mật mã khôi phục không đúng. Vui lòng kiểm tra lại KEY_BACKUP."
+            : result.error || "Restore failed";
+        throw new Error(errorMessage);
       }
 
       setMessage({
@@ -195,28 +206,39 @@ export default function BackupPage() {
           </h1>
           <p className="text-muted-foreground">Quản lý sao lưu cơ sở dữ liệu</p>
         </div>
-        <div className="flex gap-2">
-          <Button onClick={createBackup} disabled={creating || restoring}>
-            <Download className="mr-2 h-4 w-4" />
-            {creating ? "Đang xuất..." : "Xuất backup JSON"}
-          </Button>
-          <Button
-            onClick={triggerFileInput}
-            disabled={restoring || creating}
-            variant="outline"
-          >
-            {restoring ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Đang khôi phục...
-              </>
-            ) : (
-              <>
-                <Upload className="mr-2 h-4 w-4" />
-                Khôi phục từ file
-              </>
-            )}
-          </Button>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
+          <div className="flex-1 md:max-w-sm">
+            <Input
+              value={backupKey}
+              onChange={(e) => setBackupKey(e.target.value)}
+              placeholder="Nhập mật mã khôi phục"
+              type="password"
+              className="w-full"
+            />
+          </div>
+          <div className="flex gap-2 flex-wrap">
+            <Button onClick={createBackup} disabled={creating || restoring}>
+              <Download className="mr-2 h-4 w-4" />
+              {creating ? "Đang xuất..." : "Xuất backup JSON"}
+            </Button>
+            <Button
+              onClick={triggerFileInput}
+              disabled={restoring || creating}
+              variant="outline"
+            >
+              {restoring ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Đang khôi phục...
+                </>
+              ) : (
+                <>
+                  <Upload className="mr-2 h-4 w-4" />
+                  Khôi phục từ file
+                </>
+              )}
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -256,7 +278,8 @@ export default function BackupPage() {
           </p>
           <p>
             <strong>Khôi phục:</strong> Nhấn "Khôi phục từ file" và chọn file
-            backup JSON để khôi phục dữ liệu.{" "}
+            backup JSON để khôi phục dữ liệu. Trước khi khôi phục, hãy nhập "mật
+            mã khôi phục" tương ứng với biến môi trường KEY_BACKUP.
             <span className="text-red-600 font-semibold">
               ⚠️ Điều này sẽ ghi đè toàn bộ dữ liệu hiện tại!
             </span>

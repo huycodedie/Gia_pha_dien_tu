@@ -20,34 +20,7 @@ interface BackupData {
 
 export async function POST(req: NextRequest) {
   try {
-    // Check if user is admin
-    const authHeader = req.headers.get("authorization");
-    if (!authHeader?.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const token = authHeader.substring(7);
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
-      return NextResponse.json({ error: "Invalid token" }, { status: 401 });
-    }
-
-    // Check admin role
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-
-    if (profile?.role !== "admin") {
-      return NextResponse.json({ error: "Admin required" }, { status: 403 });
-    }
-
-    // Parse backup data from request
+    // Parse backup data and backup key from request
     let body;
     try {
       body = await req.json();
@@ -55,6 +28,36 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: "Invalid JSON in request body" },
         { status: 400 },
+      );
+    }
+
+    const providedKey = body?.backupKey;
+    const expectedKey = process.env.KEY_BACKUP;
+
+    if (!providedKey || typeof providedKey !== "string") {
+      return NextResponse.json(
+        { error: "Backup key is required" },
+        { status: 401 },
+      );
+    }
+
+    if (!expectedKey || typeof expectedKey !== "string") {
+      return NextResponse.json(
+        { error: "Backup key not configured" },
+        { status: 500 },
+      );
+    }
+
+    const providedKeyBase64 = Buffer.from(providedKey, "utf-8").toString(
+      "base64",
+    );
+    const normalizedProvidedKey =
+      providedKeyBase64 === expectedKey ? providedKeyBase64 : providedKey;
+
+    if (normalizedProvidedKey !== expectedKey) {
+      return NextResponse.json(
+        { error: "Invalid backup key" },
+        { status: 403 },
       );
     }
 
