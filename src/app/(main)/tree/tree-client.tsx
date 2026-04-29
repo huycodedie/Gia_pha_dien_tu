@@ -1465,6 +1465,7 @@ export default function TreeViewPage() {
                     zoomLevel={zoomLevel}
                     showCollapseToggle={hasChildren(item.node.handle)}
                     isCollapsed={collapsedBranches.has(item.node.handle)}
+                    isAdmin={isAdmin}
                     onHover={handleCardHover}
                     onClick={handleCardClick}
                     onSetFocus={handleCardFocus}
@@ -2022,7 +2023,8 @@ const MemoPersonCard = memo(
     prev.isKinshipSelected === next.isKinshipSelected &&
     prev.zoomLevel === next.zoomLevel &&
     prev.showCollapseToggle === next.showCollapseToggle &&
-    prev.isCollapsed === next.isCollapsed,
+    prev.isCollapsed === next.isCollapsed &&
+    prev.isAdmin === next.isAdmin,
 );
 
 function PersonCard({
@@ -2035,6 +2037,7 @@ function PersonCard({
   zoomLevel,
   showCollapseToggle,
   isCollapsed,
+  isAdmin,
   onHover,
   onClick,
   onSetFocus,
@@ -2049,6 +2052,7 @@ function PersonCard({
   zoomLevel: ZoomLevel;
   showCollapseToggle: boolean;
   isCollapsed: boolean;
+  isAdmin: boolean;
   onHover: (h: string | null) => void;
   onClick: (handle: string, x: number, y: number) => void;
   onSetFocus: (handle: string) => void;
@@ -2277,6 +2281,11 @@ function PersonCard({
               </span>
             )}
           </div>
+          {isAdmin && node.creatorEmail && (
+            <p className="text-[9px] text-slate-400 mt-0.5 truncate">
+              Tạo bởi: {node.creatorEmail}
+            </p>
+          )}
         </div>
       </div>
 

@@ -88,7 +88,12 @@ async function getPeopleLimit(
 
 // ── Read operations ──
 
-function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
+function dbRowToTreeNode(
+  row: Record<string, unknown>,
+  ownerEmailsById: Record<string, string> = {},
+): TreeNode {
+  const ownerId = row.owner_id as string | undefined;
+
   return {
     handle: row.handle as string,
     displayName: row.display_name as string,
@@ -103,13 +108,14 @@ function dbRowToTreeNode(row: Record<string, unknown>): TreeNode {
     isPatrilineal: row.is_patrilineal as boolean,
     families: (row.families as string[]) || [],
     parentFamilies: (row.parent_families as string[]) || [],
-    ownerId: row.owner_id as string | undefined,
+    ownerId,
     authUserId: row.auth_user_id as string | undefined,
     hasAccount: row.has_account as boolean | undefined,
     imageUrl: row.image_url as string | undefined,
     phone: row.phone as string | undefined,
     facebook: row.facebook as string | undefined,
     currentAddress: row.current_address as string | undefined,
+    creatorEmail: ownerId ? ownerEmailsById[ownerId] : undefined,
   };
 }
 
@@ -138,6 +144,7 @@ export async function fetchPeople(): Promise<TreeNode[]> {
     .order("generation")
     .order("handle");
 
+  let isAdmin = false;
   if (userId) {
     // Check if user is admin
     const { data: profile } = await supabase
@@ -147,7 +154,7 @@ export async function fetchPeople(): Promise<TreeNode[]> {
       .single();
 
     if (profile?.role === "admin") {
-      // Admin can see all data (no filter)
+      isAdmin = true;
     } else if (profile?.role === "guest" && profile.guest_of) {
       // Guest can see only their creator's data or demo data
       query = query.or(`owner_id.eq.${profile.guest_of},owner_id.is.null`);
@@ -166,7 +173,38 @@ export async function fetchPeople(): Promise<TreeNode[]> {
     console.error("Failed to fetch people:", error.message);
     return [];
   }
-  return (data || []).map(dbRowToTreeNode);
+
+  const rows = (data || []) as Record<string, unknown>[];
+  const ownerEmailsById: Record<string, string> = {};
+
+  if (isAdmin) {
+    const ownerIds = Array.from(
+      new Set(
+        rows.map((row) => row.owner_id as string | undefined).filter(Boolean),
+      ),
+    ) as string[];
+
+    if (ownerIds.length > 0) {
+      const { data: profiles, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, email")
+        .in("id", ownerIds);
+
+      if (profileError) {
+        console.warn("Failed to fetch owner emails:", profileError.message);
+      } else if (profiles) {
+        for (const profile of profiles as Array<Record<string, unknown>>) {
+          const id = profile.id as string;
+          const email = profile.email as string | undefined;
+          if (id && email) {
+            ownerEmailsById[id] = email;
+          }
+        }
+      }
+    }
+  }
+
+  return rows.map((row) => dbRowToTreeNode(row, ownerEmailsById));
 }
 
 /** Fetch all families from Supabase */

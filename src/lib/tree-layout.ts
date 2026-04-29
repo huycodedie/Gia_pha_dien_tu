@@ -31,6 +31,7 @@ export interface TreeNode {
   phone?: string;
   facebook?: string;
   currentAddress?: string;
+  creatorEmail?: string;
 }
 
 export interface TreeFamily {
