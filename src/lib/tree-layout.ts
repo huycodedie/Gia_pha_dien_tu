@@ -29,6 +29,7 @@ export interface TreeNode {
   hasAccount?: boolean;
   imageUrl?: string;
   phone?: string;
+  email?: string;
   facebook?: string;
   currentAddress?: string;
   creatorEmail?: string;

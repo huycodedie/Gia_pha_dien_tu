@@ -315,7 +315,7 @@ export function AddSpouseDialog({
   const [deathDay, setDeathDay] = useState("");
   const [isLiving, setIsLiving] = useState(true);
   const [isPatrilineal, setIsPatrilineal] = useState(false);
-  const [imageUrl, setImageUrl] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [facebook, setFacebook] = useState("");
   const [currentAddress, setCurrentAddress] = useState("");
@@ -363,7 +363,7 @@ export function AddSpouseDialog({
       deathDate: deathDateStr,
       isLiving,
       isPatrilineal,
-      imageUrl: imageUrl.trim() || undefined,
+      email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       facebook: facebook.trim() || undefined,
       currentAddress: currentAddress.trim() || undefined,
@@ -595,12 +595,13 @@ export function AddSpouseDialog({
 
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                Ảnh đại diện
+                Email
               </label>
               <Input
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="URL ảnh hoặc để trống"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="VD: email@example.com"
                 className="text-sm"
               />
             </div>
@@ -692,7 +693,7 @@ export function AddChildDialog({
   const [deathMonth, setDeathMonth] = useState("");
   const [deathDay, setDeathDay] = useState("");
   const [isLiving, setIsLiving] = useState(true);
-  const [imageUrl, setImageUrl] = useState("");
+  const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [facebook, setFacebook] = useState("");
   const [currentAddress, setCurrentAddress] = useState("");
@@ -739,7 +740,7 @@ export function AddChildDialog({
       deathYear: deathYear ? parseInt(deathYear) : undefined,
       deathDate: deathDateStr,
       isLiving,
-      imageUrl: imageUrl.trim() || undefined,
+      email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       facebook: facebook.trim() || undefined,
       currentAddress: currentAddress.trim() || undefined,
@@ -953,12 +954,13 @@ export function AddChildDialog({
 
             <div>
               <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
-                Ảnh đại diện
+                Email
               </label>
               <Input
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                placeholder="URL ảnh hoặc để trống"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="VD: email@example.com"
                 className="text-sm"
               />
             </div>

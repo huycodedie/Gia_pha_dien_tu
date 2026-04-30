@@ -30,6 +30,19 @@ ALTER TABLE events
   ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT now();
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'events_creator_id_fkey'
+  ) THEN
+    ALTER TABLE events
+      ADD CONSTRAINT events_creator_id_fkey
+      FOREIGN KEY (creator_id) REFERENCES profiles(id) ON DELETE CASCADE;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS event_rsvps (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id UUID NOT NULL REFERENCES events(id) ON DELETE CASCADE,
@@ -39,6 +52,29 @@ CREATE TABLE IF NOT EXISTS event_rsvps (
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   UNIQUE (event_id, user_id)
 );
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'event_rsvps_event_id_fkey'
+  ) THEN
+    ALTER TABLE event_rsvps
+      ADD CONSTRAINT event_rsvps_event_id_fkey
+      FOREIGN KEY (event_id) REFERENCES events(id) ON DELETE CASCADE;
+  END IF;
+
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conname = 'event_rsvps_user_id_fkey'
+  ) THEN
+    ALTER TABLE event_rsvps
+      ADD CONSTRAINT event_rsvps_user_id_fkey
+      FOREIGN KEY (user_id) REFERENCES profiles(id) ON DELETE CASCADE;
+  END IF;
+END $$;
 
 CREATE INDEX IF NOT EXISTS idx_events_creator_id ON events(creator_id);
 CREATE INDEX IF NOT EXISTS idx_events_start_at ON events(start_at DESC);

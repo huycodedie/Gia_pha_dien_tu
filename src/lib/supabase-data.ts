@@ -113,6 +113,7 @@ function dbRowToTreeNode(
     hasAccount: row.has_account as boolean | undefined,
     imageUrl: row.image_url as string | undefined,
     phone: row.phone as string | undefined,
+    email: row.email as string | undefined,
     facebook: row.facebook as string | undefined,
     currentAddress: row.current_address as string | undefined,
     creatorEmail: ownerId ? ownerEmailsById[ownerId] : undefined,
@@ -139,7 +140,7 @@ export async function fetchPeople(): Promise<TreeNode[]> {
   let query = supabase
     .from("people")
     .select(
-      "handle, display_name, gender, birth_year, death_year, birth_date, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families, owner_id, image_url, phone, facebook, current_address",
+      "handle, display_name, gender, birth_year, death_year, birth_date, death_date, generation, is_living, is_privacy_filtered, is_patrilineal, families, parent_families, owner_id, image_url, phone, email, facebook, current_address",
     )
     .order("generation")
     .order("handle");
@@ -327,6 +328,7 @@ export async function insertPerson(
       parent_families: person.parentFamilies,
       image_url: person.imageUrl,
       phone: person.phone,
+      email: person.email,
       facebook: person.facebook,
       current_address: person.currentAddress,
       owner_id: userId,
@@ -503,6 +505,7 @@ export async function updatePerson(
     isPrivacyFiltered?: boolean;
     imageUrl?: string | null;
     phone?: string | null;
+    email?: string | null;
     facebook?: string | null;
     currentAddress?: string | null;
   },
@@ -521,6 +524,7 @@ export async function updatePerson(
     dbFields.is_privacy_filtered = fields.isPrivacyFiltered;
   if (fields.imageUrl !== undefined) dbFields.image_url = fields.imageUrl;
   if (fields.phone !== undefined) dbFields.phone = fields.phone;
+  if (fields.email !== undefined) dbFields.email = fields.email;
   if (fields.facebook !== undefined) dbFields.facebook = fields.facebook;
   if (fields.currentAddress !== undefined)
     dbFields.current_address = fields.currentAddress;
@@ -574,6 +578,7 @@ export async function addSpouse(
     isLiving?: boolean;
     isPatrilineal?: boolean;
     imageUrl?: string;
+    email?: string;
     phone?: string;
     facebook?: string;
     currentAddress?: string;
@@ -645,6 +650,19 @@ export async function addSpouse(
     console.error("Failed to add spouse:", error.message);
     return { handle: null, error: error.message };
   }
+
+  if (spouse.email) {
+    const { error: emailError } = await supabase
+      .from("people")
+      .update({ email: spouse.email })
+      .eq("handle", data);
+
+    if (emailError) {
+      console.error("Failed to update spouse email:", emailError.message);
+      return { handle: data, error: emailError.message };
+    }
+  }
+
   return { handle: data, error: null };
 }
 
@@ -660,6 +678,7 @@ export async function addChild(
     deathDate?: string | null;
     isLiving?: boolean;
     imageUrl?: string;
+    email?: string;
     phone?: string;
     facebook?: string;
     currentAddress?: string;
@@ -730,6 +749,19 @@ export async function addChild(
     console.error("Failed to add child:", error.message);
     return { handle: null, error: error.message };
   }
+
+  if (child.email) {
+    const { error: emailError } = await supabase
+      .from("people")
+      .update({ email: child.email })
+      .eq("handle", data);
+
+    if (emailError) {
+      console.error("Failed to update child email:", emailError.message);
+      return { handle: data, error: emailError.message };
+    }
+  }
+
   return { handle: data, error: null };
 }
 
@@ -832,6 +864,7 @@ export async function updatePersonProfile(
     facebook?: string | null;
     currentAddress?: string | null;
     imageUrl?: string | null;
+    email?: string | null;
   },
 ): Promise<{ error: string | null }> {
   const updateData: Record<string, unknown> = {};
@@ -848,6 +881,7 @@ export async function updatePersonProfile(
     updateData.death_date = updates.deathDate;
   if (updates.isLiving !== undefined) updateData.is_living = updates.isLiving;
   if (updates.phone !== undefined) updateData.phone = updates.phone;
+  if (updates.email !== undefined) updateData.email = updates.email;
   if (updates.facebook !== undefined) updateData.facebook = updates.facebook;
   if (updates.currentAddress !== undefined)
     updateData.current_address = updates.currentAddress;

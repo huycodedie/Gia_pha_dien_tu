@@ -43,6 +43,7 @@ type EventFilter = "ALL" | "UPCOMING" | "PAST" | "PINNED";
 type ViewMode = "LIST" | "MONTH";
 
 interface EventRsvp {
+  event_id: string;
   status: "GOING" | "MAYBE" | "NOT_GOING";
 }
 
@@ -548,7 +549,7 @@ export default function EventsPage() {
     setError("");
     const { data, error: fetchError } = await supabase
       .from("events")
-      .select("*, creator:profiles(display_name, email), event_rsvps(status)")
+      .select("*, creator:profiles(display_name, email)")
       .order("is_pinned", { ascending: false })
       .order("start_at", { ascending: false });
 
@@ -560,7 +561,42 @@ export default function EventsPage() {
       return;
     }
 
-    setEvents((data ?? []) as EventItem[]);
+    const loadedEvents = (data ?? []) as EventItem[];
+    const eventIds = loadedEvents.map((event) => event.id);
+
+    if (eventIds.length === 0) {
+      setEvents([]);
+      setNowMs(Date.now());
+      setLoading(false);
+      return;
+    }
+
+    const { data: rsvpData, error: rsvpError } = await supabase
+      .from("event_rsvps")
+      .select("event_id, status")
+      .in("event_id", eventIds);
+
+    if (rsvpError) {
+      setError(rsvpError.message || "KhĂ´ng thá»ƒ táº£i danh sĂ¡ch pháº£n há»“i.");
+      setEvents(loadedEvents);
+      setNowMs(Date.now());
+      setLoading(false);
+      return;
+    }
+
+    const rsvpsByEventId = new Map<string, EventRsvp[]>();
+    for (const rsvp of (rsvpData ?? []) as EventRsvp[]) {
+      const current = rsvpsByEventId.get(rsvp.event_id) ?? [];
+      current.push(rsvp);
+      rsvpsByEventId.set(rsvp.event_id, current);
+    }
+
+    setEvents(
+      loadedEvents.map((event) => ({
+        ...event,
+        event_rsvps: rsvpsByEventId.get(event.id) ?? [],
+      })),
+    );
     setNowMs(Date.now());
     setLoading(false);
   }, [profile]);

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS people (
     death_year INT,
     birth_date DATE,
     death_date DATE,
+    email TEXT,
     is_living BOOLEAN DEFAULT true,
     is_privacy_filtered BOOLEAN DEFAULT false,
     is_patrilineal BOOLEAN DEFAULT true,
@@ -23,6 +24,7 @@ CREATE TABLE IF NOT EXISTS people (
 -- Add contact and image fields to people table
 ALTER TABLE people ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE people ADD COLUMN IF NOT EXISTS email TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS facebook TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS current_address TEXT;
 ALTER TABLE people ADD COLUMN IF NOT EXISTS birth_date DATE;

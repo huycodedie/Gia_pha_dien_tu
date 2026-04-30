@@ -26,6 +26,7 @@ export function EditPersonDialog({
   const [displayName, setDisplayName] = useState(person.displayName || "");
   const [isLiving, setIsLiving] = useState(person.isLiving);
   const [phone, setPhone] = useState(person.phone || "");
+  const [email, setEmail] = useState(person.email || "");
   const [facebook, setFacebook] = useState(person.facebook || "");
   const [currentAddress, setCurrentAddress] = useState(
     person.currentAddress || "",
@@ -115,6 +116,12 @@ export function EditPersonDialog({
       return;
     }
 
+    const trimmedEmail = email.trim();
+    if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
+      setError("Email khĂ´ng há»£p lá»‡");
+      return;
+    }
+
     setSaving(true);
     setError("");
 
@@ -141,6 +148,7 @@ export function EditPersonDialog({
       deathDate: deathDateStr,
       isLiving,
       phone: phone.trim() || null,
+      email: trimmedEmail || null,
       facebook: facebook.trim() || null,
       currentAddress: currentAddress.trim() || null,
       imageUrl: imageUrl || null,
@@ -397,6 +405,19 @@ export function EditPersonDialog({
                 value={facebook}
                 onChange={(e) => setFacebook(e.target.value)}
                 placeholder="https://facebook.com/username"
+                className="text-sm"
+              />
+            </div>
+
+            <div>
+              <label className="text-xs font-medium text-slate-600 dark:text-slate-400 mb-1 block">
+                Email
+              </label>
+              <Input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="email@example.com"
                 className="text-sm"
               />
             </div>

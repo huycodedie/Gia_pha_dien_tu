@@ -47,6 +47,12 @@ interface EventRsvp {
   user?: { display_name: string | null; email: string | null } | null;
 }
 
+interface RsvpProfile {
+  id: string;
+  display_name: string | null;
+  email: string | null;
+}
+
 const typeLabels: Record<EventType, { label: string; icon: string }> = {
   MEMORIAL: { label: "Giỗ", icon: "🕯️" },
   MEETING: { label: "Họp họ", icon: "🤝" },
@@ -132,7 +138,7 @@ export default function EventDetailPage() {
 
     const { data: rsvpData, error: rsvpError } = await supabase
       .from("event_rsvps")
-      .select("*, user:profiles(display_name, email)")
+      .select("*")
       .eq("event_id", eventId)
       .order("created_at", { ascending: true });
 
@@ -146,11 +152,34 @@ export default function EventDetailPage() {
     }
 
     const loadedRsvps = (rsvpData ?? []) as EventRsvp[];
+    const userIds = Array.from(new Set(loadedRsvps.map((rsvp) => rsvp.user_id)));
+    const profilesById = new Map<string, RsvpProfile>();
+
+    if (userIds.length > 0) {
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("id, display_name, email")
+        .in("id", userIds);
+
+      if (profileError) {
+        setError(profileError.message || "KhĂ´ng thá»ƒ táº£i thĂ´ng tin ngÆ°á»i pháº£n há»“i.");
+      } else {
+        for (const profile of (profileData ?? []) as RsvpProfile[]) {
+          profilesById.set(profile.id, profile);
+        }
+      }
+    }
+
+    const rsvpsWithProfiles = loadedRsvps.map((rsvp) => ({
+      ...rsvp,
+      user: profilesById.get(rsvp.user_id) ?? null,
+    }));
+
     setEvent(data as EventDetail);
-    setRsvps(loadedRsvps);
+    setRsvps(rsvpsWithProfiles);
     setMyRsvp(
       user
-        ? loadedRsvps.find((rsvp) => rsvp.user_id === user.id)?.status ?? null
+        ? rsvpsWithProfiles.find((rsvp) => rsvp.user_id === user.id)?.status ?? null
         : null,
     );
     setLoading(false);

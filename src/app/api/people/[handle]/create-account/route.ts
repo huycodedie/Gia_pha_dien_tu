@@ -30,7 +30,7 @@ export async function POST(
 
     const { data: person, error: personError } = await adminSupabase
       .from("people")
-      .select("display_name, birth_date, has_account, owner_id, auth_user_id")
+      .select("display_name, birth_date, email, has_account, owner_id, auth_user_id")
       .eq("handle", handle)
       .single();
 
@@ -108,8 +108,20 @@ export async function POST(
         .replace(/[^a-zA-Z0-9]/g, "")
         .toLowerCase() || "user";
 
+    const savedEmail =
+      typeof person.email === "string"
+        ? person.email.trim().replace(/^"+|"+$/g, "")
+        : "";
+
+    if (savedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(savedEmail)) {
+      return NextResponse.json(
+        { error: "Saved person email is invalid" },
+        { status: 400 },
+      );
+    }
+
     const randomNum = Math.floor(1000 + Math.random() * 9000);
-    const email = `${nameSlug}${randomNum}@gmail.com`;
+    const email = savedEmail || `${nameSlug}${randomNum}@gmail.com`;
     const password = "123456";
 
     const { data: createData, error: createError } =
