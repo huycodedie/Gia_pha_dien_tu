@@ -77,7 +77,7 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
       if (imageFile) {
         const fileExt = imageFile.name.split(".").pop();
         const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-        const { data: uploadData, error: uploadError } = await supabase.storage
+        const { error: uploadError } = await supabase.storage
           .from("posts")
           .upload(fileName, imageFile);
 
@@ -91,7 +91,7 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
         }
       }
 
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from("posts")
         .insert({
           author_id: user.id,
@@ -108,7 +108,6 @@ function PostComposer({ onPostCreated }: { onPostCreated: () => void }) {
         return;
       }
 
-      console.log("Post created successfully:", data);
       setBody("");
       setTitle("");
       setImageFile(null);
@@ -215,7 +214,11 @@ function CommentSection({ postId }: { postId: string }) {
   }, [postId]);
 
   useEffect(() => {
-    fetchComments();
+    const timeoutId = window.setTimeout(() => {
+      void fetchComments();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [fetchComments]);
 
   const handleSubmit = async () => {
@@ -404,8 +407,6 @@ export default function FeedPage() {
         throw error;
       }
 
-      console.log("Fetched posts:", data?.length || 0, "posts");
-
       if (data && data.length > 0) {
         // Get comment counts
         const postIds = data.map((p: Post) => p.id);
@@ -435,7 +436,11 @@ export default function FeedPage() {
   }, []);
 
   useEffect(() => {
-    fetchPosts();
+    const timeoutId = window.setTimeout(() => {
+      void fetchPosts();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
   }, [fetchPosts]);
 
   return (

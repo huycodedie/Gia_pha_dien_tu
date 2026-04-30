@@ -130,7 +130,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: u.email || "",
           display_name:
             u.user_metadata?.display_name || u.email?.split("@")[0] || "",
-          role: "member",
+          role: "viewer",
           status: "active",
         });
       }

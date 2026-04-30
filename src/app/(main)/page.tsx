@@ -46,7 +46,6 @@ export default function HomePage() {
           "profiles",
           "posts",
           "events",
-          "media",
         ] as const;
         const counts: Record<string, number> = {};
         

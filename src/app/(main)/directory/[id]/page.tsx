@@ -22,7 +22,13 @@ export default function MemberDetailPage() {
         setLoading(false);
     }, [params.id]);
 
-    useEffect(() => { fetchMember(); }, [fetchMember]);
+    useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
+            void fetchMember();
+        }, 0);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [fetchMember]);
 
     if (loading) return <div className="flex items-center justify-center h-48"><Loader2 className="h-8 w-8 animate-spin" /></div>;
     if (!member) return <div className="text-center py-12 text-muted-foreground">Không tìm thấy thành viên</div>;

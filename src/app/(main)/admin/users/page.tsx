@@ -3,12 +3,8 @@
 import { useState, useCallback, useEffect } from "react";
 import {
   Shield,
-  Plus,
   MoreHorizontal,
-  Copy,
-  Check,
   Link2,
-  Trash2,
   RefreshCw,
   Loader2,
 } from "lucide-react";
@@ -35,7 +31,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   DropdownMenu,
@@ -64,33 +59,13 @@ interface ProfileUser {
   created_at: string;
 }
 
-interface InviteLink {
-  id: string;
-  code: string;
-  role: string;
-  max_uses: number;
-  used_count: number;
-  created_at: string;
-}
-
-function generateCode() {
-  const chars = "abcdef0123456789";
-  let code = "";
-  for (let i = 0; i < 32; i++)
-    code += chars[Math.floor(Math.random() * chars.length)];
-  return code;
-}
-
 export default function AdminUsersPage() {
   const { isAdmin, loading: authLoading } = useAuth();
   const [users, setUsers] = useState<ProfileUser[]>([]);
-  const [invites, setInvites] = useState<InviteLink[]>([]);
   const [loading, setLoading] = useState(true);
-
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
-  const [inviteRole, setInviteRole] = useState("member");
+  const [inviteRole, setInviteRole] = useState("viewer");
   const [inviteMaxUses, setInviteMaxUses] = useState(1);
-  const [copied, setCopied] = useState<string | null>(null);
 
   // Fetch users from profiles table
   const fetchUsers = useCallback(async () => {
@@ -108,48 +83,19 @@ export default function AdminUsersPage() {
     }
   }, []);
 
-  // Fetch invite links
-  const fetchInvites = useCallback(async () => {
-    try {
-      const { data, error } = await supabase
-        .from("invite_links")
-        .select("*")
-        .order("created_at", { ascending: false });
-      if (!error && data) setInvites(data);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
   useEffect(() => {
     if (!authLoading && isAdmin) {
       fetchUsers();
-      fetchInvites();
     }
-  }, [authLoading, isAdmin, fetchUsers, fetchInvites]);
+  }, [authLoading, isAdmin, fetchUsers]);
 
-  // Create invite link
-  const handleCreateInvite = useCallback(async () => {
-    const code = generateCode();
-    const { data, error } = await supabase
-      .from("invite_links")
-      .insert({
-        code,
-        role: inviteRole,
-        max_uses: inviteMaxUses,
-      })
-      .select()
-      .single();
-    if (!error && data) {
-      setInvites((prev) => [data, ...prev]);
-    }
-  }, [inviteRole, inviteMaxUses]);
-
-  // Delete invite link
-  const handleDeleteInvite = useCallback(async (id: string) => {
-    const { error } = await supabase.from("invite_links").delete().eq("id", id);
-    if (!error) setInvites((prev) => prev.filter((inv) => inv.id !== id));
+  const handleCreateInvite = useCallback(() => {
+    setInviteDialogOpen(false);
   }, []);
+
+  const handleCloseDialog = () => {
+    setInviteDialogOpen(false);
+  };
 
   // Change user role
   const handleChangeRole = useCallback(
@@ -183,44 +129,6 @@ export default function AdminUsersPage() {
     },
     [],
   );
-
-  // Copy to clipboard
-  const handleCopy = useCallback(async (text: string) => {
-    try {
-      if (typeof navigator !== "undefined" && navigator.clipboard) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        // Fallback to old method
-        const input = document.createElement("input");
-        input.value = text;
-        document.body.appendChild(input);
-        input.select();
-        document.execCommand("copy");
-        document.body.removeChild(input);
-      }
-      setCopied(text);
-      setTimeout(() => setCopied(null), 2000);
-    } catch {
-      const input = document.createElement("input");
-      input.value = text;
-      document.body.appendChild(input);
-      input.select();
-      document.execCommand("copy");
-      document.body.removeChild(input);
-      setCopied(text);
-      setTimeout(() => setCopied(null), 2000);
-    }
-  }, []);
-
-  const getInviteUrl = (code: string) => {
-    const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-    return `${baseUrl}/register?code=${code}`;
-  };
-
-  const handleCloseDialog = () => {
-    setInviteDialogOpen(false);
-    setCopied(null);
-  };
 
   if (authLoading) {
     return (
@@ -256,10 +164,7 @@ export default function AdminUsersPage() {
           <Button
             variant="outline"
             size="icon"
-            onClick={() => {
-              fetchUsers();
-              fetchInvites();
-            }}
+            onClick={() => fetchUsers()}
           >
             <RefreshCw className="h-4 w-4" />
           </Button>
@@ -270,12 +175,11 @@ export default function AdminUsersPage() {
               else setInviteDialogOpen(true);
             }}
           >
-            {/* <DialogTrigger asChild>
+            {/*
               <Button>
-                <Plus className="mr-2 h-4 w-4" />
                 Tạo link mời
               </Button>
-            </DialogTrigger> */}
+            */}
             <DialogContent>
               <DialogHeader>
                 <DialogTitle>Tạo link mời thành viên</DialogTitle>
@@ -430,85 +334,6 @@ export default function AdminUsersPage() {
         </CardContent>
       </Card>
 
-      {/* Invite Links Section */}
-      {/* <Card>
-        <CardHeader>
-          <CardTitle className="text-base flex items-center gap-2">
-            <Link2 className="h-4 w-4" />
-            Link mời
-          </CardTitle>
-          <CardDescription>{invites.length} link</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {invites.length === 0 ? (
-            <p className="text-center text-muted-foreground py-6">
-              Chưa có link mời nào
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Link</TableHead>
-                  <TableHead>Quyền</TableHead>
-                  <TableHead>Đã dùng / Tối đa</TableHead>
-                  <TableHead>Ngày tạo</TableHead>
-                  <TableHead className="w-20"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {invites.map((inv) => (
-                  <TableRow key={inv.id}>
-                    <TableCell>
-                      <code className="text-xs bg-muted px-2 py-1 rounded">
-                        ...?code={inv.code.slice(0, 8)}...
-                      </code>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={ROLE_COLORS[inv.role] || ""}
-                      >
-                        {inv.role.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {inv.used_count} / {inv.max_uses}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {new Date(inv.created_at).toLocaleDateString("vi-VN")}
-                    </TableCell>
-                    <TableCell>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleCopy(getInviteUrl(inv.code))}
-                          title="Sao chép link"
-                        >
-                          {copied === getInviteUrl(inv.code) ? (
-                            <Check className="h-4 w-4 text-green-600" />
-                          ) : (
-                            <Copy className="h-4 w-4" />
-                          )}
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDeleteInvite(inv.id)}
-                          title="Xóa link"
-                          className="text-destructive hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card> */}
     </div>
   );
 }

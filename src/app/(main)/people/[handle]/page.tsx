@@ -7,7 +7,6 @@ import {
   ArrowLeft,
   User,
   Heart,
-  Image,
   FileText,
   History,
   Lock,
@@ -31,6 +30,19 @@ import { CommentSection } from "@/components/comment-section";
 import { EditPersonDialog } from "@/components/edit-person-dialog";
 import { useAuth } from "@/components/auth-provider";
 
+interface FamilyDetail {
+  handle: string;
+  fatherHandle?: string;
+  motherHandle?: string;
+  children: string[];
+}
+
+interface RelatedPerson {
+  handle: string;
+  displayName: string;
+  gender: number;
+}
+
 // Format date from YYYY-MM-DD to DD/MM/YYYY
 function formatDateVN(dateStr: string): string {
   if (!dateStr) return "—";
@@ -42,7 +54,7 @@ function formatDateVN(dateStr: string): string {
 export default function PersonProfilePage() {
   const params = useParams();
   const router = useRouter();
-  const { role, session } = useAuth();
+  const { session } = useAuth();
   const handle = params.handle as string;
   const [person, setPerson] = useState<PersonDetail | null>(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +62,12 @@ export default function PersonProfilePage() {
   const [creatingAccount, setCreatingAccount] = useState(false);
   const [canEdit, setCanEdit] = useState(false);
   const [canCreateAccount, setCanCreateAccount] = useState(false);
+  const [familiesByHandle, setFamiliesByHandle] = useState<
+    Record<string, FamilyDetail>
+  >({});
+  const [peopleByHandle, setPeopleByHandle] = useState<
+    Record<string, RelatedPerson>
+  >({});
 
   const fetchPerson = async () => {
     try {
@@ -61,6 +79,9 @@ export default function PersonProfilePage() {
         .single();
       if (!error && data) {
         const row = data as Record<string, unknown>;
+        const personFamilies = (row.families as string[]) || [];
+        const parentFamilies = (row.parent_families as string[]) || [];
+
         setPerson({
           handle: row.handle as string,
           displayName: row.display_name as string,
@@ -73,8 +94,8 @@ export default function PersonProfilePage() {
           isLiving: row.is_living as boolean,
           isPrivacyFiltered: row.is_privacy_filtered as boolean,
           isPatrilineal: row.is_patrilineal as boolean,
-          families: (row.families as string[]) || [],
-          parentFamilies: (row.parent_families as string[]) || [],
+          families: personFamilies,
+          parentFamilies,
           phone: row.phone as string | undefined,
           email: row.email as string | undefined,
           currentAddress: row.current_address as string | undefined,
@@ -87,6 +108,73 @@ export default function PersonProfilePage() {
           hasAccount: row.has_account as boolean | undefined,
           authUserId: row.auth_user_id as string | undefined,
         } as PersonDetail);
+
+        const familyHandles = Array.from(
+          new Set([...personFamilies, ...parentFamilies]),
+        );
+
+        if (familyHandles.length === 0) {
+          setFamiliesByHandle({});
+          setPeopleByHandle({});
+        } else {
+          const { data: familyRows } = await supabase
+            .from("families")
+            .select("handle, father_handle, mother_handle, children")
+            .in("handle", familyHandles);
+
+          const familyDetails = ((familyRows || []) as Array<
+            Record<string, unknown>
+          >).map((family) => ({
+            handle: family.handle as string,
+            fatherHandle: family.father_handle as string | undefined,
+            motherHandle: family.mother_handle as string | undefined,
+            children: (family.children as string[]) || [],
+          }));
+
+          setFamiliesByHandle(
+            Object.fromEntries(
+              familyDetails.map((family) => [family.handle, family]),
+            ),
+          );
+
+          const relatedHandles = Array.from(
+            new Set(
+              familyDetails.flatMap((family) => [
+                family.fatherHandle,
+                family.motherHandle,
+                ...family.children,
+              ]),
+            ),
+          ).filter((relatedHandle): relatedHandle is string =>
+            Boolean(relatedHandle),
+          );
+
+          if (relatedHandles.length === 0) {
+            setPeopleByHandle({});
+          } else {
+            const { data: relatedRows } = await supabase
+              .from("people")
+              .select("handle, display_name, gender")
+              .in("handle", relatedHandles);
+
+            const relatedPeople = ((relatedRows || []) as Array<
+              Record<string, unknown>
+            >).map((relatedPerson) => ({
+              handle: relatedPerson.handle as string,
+              displayName: relatedPerson.display_name as string,
+              gender: relatedPerson.gender as number,
+            }));
+
+            setPeopleByHandle(
+              Object.fromEntries(
+                relatedPeople.map((relatedPerson) => [
+                  relatedPerson.handle,
+                  relatedPerson,
+                ]),
+              ),
+            );
+          }
+        }
       }
     } catch {
       /* ignore */
@@ -121,7 +209,7 @@ export default function PersonProfilePage() {
 
       toast.success("Tạo tài khoản thành công.");
       await fetchPerson();
-    } catch (error) {
+    } catch {
       toast.error("Lỗi khi gọi API tạo tài khoản.");
     } finally {
       setCreatingAccount(false);
@@ -232,7 +320,7 @@ export default function PersonProfilePage() {
         </div>
         <div className="flex gap-2 items-center">
           {person.hasAccount ? (
-            <Badge variant="secondary">Created</Badge>
+            <Badge variant="secondary">Đã tạo tài khoản</Badge>
           ) : canCreateAccount ? (
             <Button
               variant="secondary"
@@ -241,10 +329,10 @@ export default function PersonProfilePage() {
               disabled={creatingAccount}
             >
               <Edit className="h-4 w-4 mr-2" />
-              {creatingAccount ? "Đang tạo..." : "Create Account"}
+              {creatingAccount ? "Đang tạo..." : "Tạo tài khoản"}
             </Button>
           ) : (
-            <Badge variant="outline">No account</Badge>
+            <Badge variant="outline">Chưa có tài khoản</Badge>
           )}
           {canEdit && (
             <Button
@@ -283,9 +371,6 @@ export default function PersonProfilePage() {
           </TabsTrigger>
           <TabsTrigger value="relationships" className="gap-1">
             <Heart className="h-3.5 w-3.5" /> Quan hệ
-          </TabsTrigger>
-          <TabsTrigger value="media" className="gap-1">
-            <Image className="h-3.5 w-3.5" /> Tư liệu
           </TabsTrigger>
           <TabsTrigger value="history" className="gap-1">
             <History className="h-3.5 w-3.5" /> Lịch sử
@@ -460,7 +545,7 @@ export default function PersonProfilePage() {
           )}
         </TabsContent>
 
-        {/* Relationships */}
+        {/* gia đình */}
         <TabsContent value="relationships">
           <Card>
             <CardHeader>
@@ -473,11 +558,44 @@ export default function PersonProfilePage() {
                     Gia đình (cha/mẹ)
                   </p>
                   {person.parentFamilies && person.parentFamilies.length > 0 ? (
-                    person.parentFamilies.map((f) => (
-                      <Badge key={f} variant="outline" className="mr-1">
-                        {f}
-                      </Badge>
-                    ))
+                    <div className="space-y-2">
+                      {person.parentFamilies.map((familyHandle) => {
+                        const family = familiesByHandle[familyHandle];
+                        if (!family) {
+                          return (
+                            <Badge
+                              key={familyHandle}
+                              variant="outline"
+                              className="mr-1"
+                            >
+                              {familyHandle}
+                            </Badge>
+                          );
+                        }
+
+                        return (
+                          <div
+                            key={family.handle}
+                            className="flex flex-wrap items-center gap-2"
+                          >
+                            {family.fatherHandle && (
+                              <RelationshipPersonBadge
+                                label="Cha"
+                                person={peopleByHandle[family.fatherHandle]}
+                                fallbackHandle={family.fatherHandle}
+                              />
+                            )}
+                            {family.motherHandle && (
+                              <RelationshipPersonBadge
+                                label="Mẹ"
+                                person={peopleByHandle[family.motherHandle]}
+                                fallbackHandle={family.motherHandle}
+                              />
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       Không có thông tin
@@ -490,11 +608,72 @@ export default function PersonProfilePage() {
                     Gia đình (vợ/chồng, con)
                   </p>
                   {person.families && person.families.length > 0 ? (
-                    person.families.map((f) => (
-                      <Badge key={f} variant="outline" className="mr-1">
-                        {f}
-                      </Badge>
-                    ))
+                    <div className="space-y-3">
+                      {person.families.map((familyHandle) => {
+                        const family = familiesByHandle[familyHandle];
+                        if (!family) {
+                          return (
+                            <Badge
+                              key={familyHandle}
+                              variant="outline"
+                              className="mr-1"
+                            >
+                              {familyHandle}
+                            </Badge>
+                          );
+                        }
+
+                        const spouseHandle =
+                          family.fatherHandle === person.handle
+                            ? family.motherHandle
+                            : family.fatherHandle;
+                        const children = family.children.filter(
+                          (childHandle) => childHandle !== person.handle,
+                        );
+
+                        return (
+                          <div key={family.handle} className="space-y-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              {spouseHandle ? (
+                                <RelationshipPersonBadge
+                                  label={
+                                    person.gender === 1
+                                      ? "Vợ"
+                                      : person.gender === 2
+                                        ? "Chồng"
+                                        : "Vợ/chồng"
+                                  }
+                                  person={peopleByHandle[spouseHandle]}
+                                  fallbackHandle={spouseHandle}
+                                />
+                              ) : (
+                                <span className="text-sm text-muted-foreground">
+                                  Không có thông tin vợ/chồng
+                                </span>
+                              )}
+                            </div>
+                            {children.length > 0 ? (
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  Con:
+                                </span>
+                                {children.map((childHandle) => (
+                                  <RelationshipPersonBadge
+                                    key={childHandle}
+                                    person={peopleByHandle[childHandle]}
+                                    fallbackHandle={childHandle}
+                                  />
+                                ))}
+                              </div>
+                            ) : (
+                              <p className="text-sm text-muted-foreground">
+                                Chưa có thông tin con
+                              </p>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   ) : (
                     <p className="text-sm text-muted-foreground">
                       Không có thông tin
@@ -502,26 +681,6 @@ export default function PersonProfilePage() {
                   )}
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Media */}
-        <TabsContent value="media">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">Tư liệu liên quan</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground text-sm">
-                {person.mediaCount
-                  ? `${person.mediaCount} tư liệu`
-                  : "Chưa có tư liệu nào"}
-              </p>
-              <p className="text-xs text-muted-foreground mt-2">
-                Tính năng xem chi tiết sẽ được bổ sung trong Epic 3 (Media
-                Library).
-              </p>
             </CardContent>
           </Card>
         </TabsContent>
@@ -564,5 +723,30 @@ function InfoRow({ label, value }: { label: string; value: string }) {
       <p className="text-xs font-medium text-muted-foreground">{label}</p>
       <p className="text-sm">{value}</p>
     </div>
+  );
+}
+
+function RelationshipPersonBadge({
+  label,
+  person,
+  fallbackHandle,
+}: {
+  label?: string;
+  person?: RelatedPerson;
+  fallbackHandle: string;
+}) {
+  const text = person?.displayName || fallbackHandle;
+
+  return (
+    <Badge variant="outline" className="gap-1">
+      {label && <span className="text-muted-foreground">{label}:</span>}
+      {person ? (
+        <Link href={`/people/${person.handle}`} className="hover:underline">
+          {text}
+        </Link>
+      ) : (
+        text
+      )}
+    </Badge>
   );
 }

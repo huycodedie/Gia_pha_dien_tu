@@ -25,7 +25,7 @@ const typeIcons: Record<string, string> = {
 
 export default function NotificationsPage() {
     const router = useRouter();
-    const { user, isLoggedIn } = useAuth();
+    const { user } = useAuth();
     const [notifications, setNotifications] = useState<NotificationItem[]>([]);
     const [loading, setLoading] = useState(true);
 
@@ -42,7 +42,13 @@ export default function NotificationsPage() {
         setLoading(false);
     }, [user]);
 
-    useEffect(() => { fetchNotifications(); }, [fetchNotifications]);
+    useEffect(() => {
+        const timeoutId = window.setTimeout(() => {
+            void fetchNotifications();
+        }, 0);
+
+        return () => window.clearTimeout(timeoutId);
+    }, [fetchNotifications]);
 
     const unreadCount = notifications.filter(n => !n.is_read).length;
 
