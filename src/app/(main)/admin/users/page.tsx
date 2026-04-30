@@ -431,7 +431,7 @@ export default function AdminUsersPage() {
       </Card>
 
       {/* Invite Links Section */}
-      <Card>
+      {/* <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <Link2 className="h-4 w-4" />
@@ -508,7 +508,7 @@ export default function AdminUsersPage() {
             </Table>
           )}
         </CardContent>
-      </Card>
+      </Card> */}
     </div>
   );
 }

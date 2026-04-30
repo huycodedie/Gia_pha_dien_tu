@@ -13,6 +13,7 @@ const typeLabels: Record<string, { label: string; emoji: string }> = {
     MEMORIAL: { label: 'Giỗ', emoji: '🕯️' },
     MEETING: { label: 'Họp họ', emoji: '🤝' },
     FESTIVAL: { label: 'Lễ hội', emoji: '🎊' },
+    QR: { label: "Ủng hộ", emoji: "💰" },
     OTHER: { label: 'Khác', emoji: '📅' },
 };
 

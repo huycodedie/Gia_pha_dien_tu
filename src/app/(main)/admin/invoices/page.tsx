@@ -711,7 +711,7 @@ export default function AdminInvoicesPage() {
                       colSpan={10}
                       className="text-center text-muted-foreground py-8"
                     >
-                      Không tìm thấy lịch sử subscription hay đơn đã xử lý
+                      Không tìm thấy lịch sử đơn đã xử lý
                     </TableCell>
                   </TableRow>
                 )}
