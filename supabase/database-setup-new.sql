@@ -55,7 +55,7 @@ DROP TRIGGER IF EXISTS families_updated_at ON families;
 CREATE TRIGGER families_updated_at BEFORE UPDATE ON families
 FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
-
+/*
 -- Function to get relationship between two people
 CREATE OR REPLACE FUNCTION get_kinship_relationship(
     p_person1_handle TEXT,
@@ -371,6 +371,358 @@ BEGIN
     RETURN 'Quan hệ khác';
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
+
+CREATE OR REPLACE FUNCTION blood_lineal_label(
+    p_distance INT,
+    p_gender INT,
+    p_direction TEXT
+)
+RETURNS TEXT AS $$
+BEGIN
+    IF p_direction = 'up' THEN
+        IF p_distance = 1 THEN
+            IF p_gender = 1 THEN RETURN 'Cha'; ELSE RETURN 'Mẹ'; END IF;
+        ELSIF p_distance = 2 THEN
+            IF p_gender = 1 THEN RETURN 'Ông'; ELSE RETURN 'Bà'; END IF;
+        ELSIF p_distance = 3 THEN
+            RETURN 'Cụ';
+        ELSIF p_distance = 4 THEN
+            RETURN 'Cao tổ';
+        ELSE
+            RETURN 'Tổ tiên';
+        END IF;
+    END IF;
+
+    IF p_distance = 1 THEN
+        IF p_gender = 1 THEN RETURN 'Con trai'; ELSE RETURN 'Con gái'; END IF;
+    ELSIF p_distance = 2 THEN
+        IF p_gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+    ELSIF p_distance = 3 THEN
+        RETURN 'Chắt';
+    ELSIF p_distance = 4 THEN
+        RETURN 'Chút';
+    ELSE
+        RETURN 'Hậu duệ';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION blood_collateral_label(
+    p_d1 INT,
+    p_d2 INT,
+    p_gender INT
+)
+RETURNS TEXT AS $$
+DECLARE
+    gap INT;
+BEGIN
+    IF p_d1 = 1 AND p_d2 = 1 THEN
+        IF p_gender = 1 THEN RETURN 'Anh/Em trai'; ELSE RETURN 'Chị/Em gái'; END IF;
+    END IF;
+
+    IF p_d1 = p_d2 THEN
+        IF p_gender = 1 THEN RETURN 'Anh/Em họ trai'; ELSE RETURN 'Anh/Em họ gái'; END IF;
+    END IF;
+
+    IF p_d1 > p_d2 THEN
+        gap := p_d1 - p_d2;
+        IF gap = 1 THEN
+            IF p_gender = 1 THEN RETURN 'Chú/Bác/Cậu'; ELSE RETURN 'Cô/Dì'; END IF;
+        ELSIF gap = 2 THEN
+            IF p_gender = 1 THEN RETURN 'Ông chú/bác'; ELSE RETURN 'Bà cô/dì'; END IF;
+        ELSIF gap = 3 THEN
+            IF p_gender = 1 THEN RETURN 'Cụ ông bên bác/chú'; ELSE RETURN 'Cụ bà bên cô/dì'; END IF;
+        ELSE
+            RETURN 'Bậc trên trong họ';
+        END IF;
+    END IF;
+
+    gap := p_d2 - p_d1;
+    IF gap = 1 THEN
+        IF p_gender = 1 THEN RETURN 'Cháu trai'; ELSE RETURN 'Cháu gái'; END IF;
+    ELSIF gap = 2 THEN
+        IF p_gender = 1 THEN RETURN 'Chắt trai'; ELSE RETURN 'Chắt gái'; END IF;
+    ELSE
+        RETURN 'Hậu duệ trong họ';
+    END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION get_blood_kinship_relationship(
+    p_person1_handle TEXT,
+    p_person2_handle TEXT
+)
+RETURNS TEXT AS $$
+DECLARE
+    person2 RECORD;
+    ancestor_distance INT;
+    descendant_distance INT;
+    common_d1 INT;
+    common_d2 INT;
+BEGIN
+    SELECT * INTO person2 FROM people WHERE handle = p_person2_handle LIMIT 1;
+    IF person2 IS NULL THEN
+        RETURN 'Quan hệ khác';
+    END IF;
+
+    WITH RECURSIVE ancestors(ancestor_handle, distance) AS (
+        SELECT parent_handle, 1
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+        ) direct_parents
+        WHERE parent_handle IS NOT NULL
+
+        UNION
+
+        SELECT parent.parent_handle, ancestors.distance + 1
+        FROM ancestors
+        JOIN LATERAL (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[ancestors.ancestor_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[ancestors.ancestor_handle]
+        ) parent ON parent.parent_handle IS NOT NULL
+    )
+    SELECT MIN(distance)
+    INTO ancestor_distance
+    FROM ancestors
+    WHERE ancestor_handle = p_person2_handle;
+
+    IF ancestor_distance IS NOT NULL THEN
+        RETURN blood_lineal_label(ancestor_distance, person2.gender, 'up');
+    END IF;
+
+    WITH RECURSIVE descendants(descendant_handle, distance) AS (
+        SELECT child_handle, 1
+        FROM (
+            SELECT unnest(children) AS child_handle
+            FROM families
+            WHERE father_handle = p_person1_handle OR mother_handle = p_person1_handle
+        ) direct_children
+
+        UNION
+
+        SELECT child.child_handle, descendants.distance + 1
+        FROM descendants
+        JOIN LATERAL (
+            SELECT unnest(children) AS child_handle
+            FROM families
+            WHERE father_handle = descendants.descendant_handle
+               OR mother_handle = descendants.descendant_handle
+        ) child ON true
+    )
+    SELECT MIN(distance)
+    INTO descendant_distance
+    FROM descendants
+    WHERE descendant_handle = p_person2_handle;
+
+    IF descendant_distance IS NOT NULL THEN
+        RETURN blood_lineal_label(descendant_distance, person2.gender, 'down');
+    END IF;
+
+    WITH RECURSIVE a1(ancestor_handle, distance) AS (
+        SELECT p_person1_handle, 0
+        UNION
+        SELECT parent.parent_handle, a1.distance + 1
+        FROM a1
+        JOIN LATERAL (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a1.ancestor_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a1.ancestor_handle]
+        ) parent ON parent.parent_handle IS NOT NULL
+    ),
+    a2(ancestor_handle, distance) AS (
+        SELECT p_person2_handle, 0
+        UNION
+        SELECT parent.parent_handle, a2.distance + 1
+        FROM a2
+        JOIN LATERAL (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a2.ancestor_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a2.ancestor_handle]
+        ) parent ON parent.parent_handle IS NOT NULL
+    ),
+    common AS (
+        SELECT a1.distance AS d1, a2.distance AS d2
+        FROM a1
+        JOIN a2 USING (ancestor_handle)
+        WHERE a1.distance > 0 OR a2.distance > 0
+        ORDER BY (a1.distance + a2.distance), GREATEST(a1.distance, a2.distance)
+        LIMIT 1
+    )
+    SELECT d1, d2
+    INTO common_d1, common_d2
+    FROM common;
+
+    IF common_d1 IS NOT NULL AND common_d2 IS NOT NULL THEN
+        RETURN blood_collateral_label(common_d1, common_d2, person2.gender);
+    END IF;
+
+    RETURN 'Quan hệ khác';
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION map_spouse_relation(
+    p_base_relation TEXT,
+    p_base_gender INT,
+    p_spouse_gender INT
+)
+RETURNS TEXT AS $$
+BEGIN
+    IF p_base_relation IN ('Anh/Em trai', 'Chị/Em gái') THEN
+        IF p_base_gender = 1 THEN
+            RETURN 'Chị/Em dâu';
+        ELSE
+            RETURN 'Anh/Em rể';
+        END IF;
+    END IF;
+
+    IF p_base_relation IN ('Anh/Em chồng', 'Chị/Em chồng', 'Anh/Em vợ', 'Chị/Em vợ') THEN
+        IF p_spouse_gender = 1 THEN
+            RETURN 'Anh/Em rể';
+        ELSE
+            RETURN 'Chị/Em dâu';
+        END IF;
+    END IF;
+
+    IF p_base_relation = 'Chú/Bác/Cậu' THEN
+        IF p_spouse_gender = 1 THEN RETURN 'Ông chú/dượng'; ELSE RETURN 'Bà mợ/bác'; END IF;
+    END IF;
+
+    IF p_base_relation = 'Cô/Dì' THEN
+        IF p_spouse_gender = 1 THEN RETURN 'Ông chú/dượng'; ELSE RETURN 'Bà cô/dì'; END IF;
+    END IF;
+
+    IF p_base_relation = 'Ông chú/bác' THEN
+        IF p_spouse_gender = 1 THEN RETURN 'Ông chú/bác'; ELSE RETURN 'Bà mự/bác'; END IF;
+    END IF;
+
+    IF p_base_relation = 'Bà cô/dì' THEN
+        IF p_spouse_gender = 1 THEN RETURN 'Ông chú/dượng'; ELSE RETURN 'Bà cô/dì'; END IF;
+    END IF;
+
+    IF p_base_relation IN ('Con trai', 'Con gái', 'Cháu trai', 'Cháu gái', 'Chắt', 'Chắt trai', 'Chắt gái', 'Hậu duệ', 'Hậu duệ trong họ') THEN
+        RETURN p_base_relation;
+    END IF;
+
+    IF p_base_relation IN ('Cha', 'Mẹ', 'Ông', 'Bà', 'Cụ', 'Cao tổ', 'Tổ tiên', 'Bậc trên trong họ', 'Cụ ông bên bác/chú', 'Cụ bà bên cô/dì') THEN
+        RETURN p_base_relation;
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+-- Final generalized kinship function for deep genealogy trees.
+CREATE OR REPLACE FUNCTION get_kinship_relationship(
+    p_person1_handle TEXT,
+    p_person2_handle TEXT
+)
+RETURNS TEXT AS $$
+DECLARE
+    person1 RECORD;
+    person2 RECORD;
+    spouse_of_person1 TEXT;
+    spouse_of_person2 TEXT;
+    base_relation TEXT;
+    mapped_relation TEXT;
+BEGIN
+    SELECT * INTO person1 FROM people WHERE handle = p_person1_handle LIMIT 1;
+    SELECT * INTO person2 FROM people WHERE handle = p_person2_handle LIMIT 1;
+
+    IF person1 IS NULL OR person2 IS NULL THEN
+        RETURN 'Không xác định';
+    END IF;
+
+    IF p_person1_handle = p_person2_handle THEN
+        RETURN 'Chính mình';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM families
+        WHERE (father_handle = p_person1_handle AND mother_handle = p_person2_handle)
+           OR (father_handle = p_person2_handle AND mother_handle = p_person1_handle)
+    ) THEN
+        IF person2.gender = 1 THEN RETURN 'Chồng'; END IF;
+        IF person2.gender = 2 THEN RETURN 'Vợ'; END IF;
+        RETURN 'Vợ/Chồng';
+    END IF;
+
+    base_relation := get_blood_kinship_relationship(p_person1_handle, p_person2_handle);
+    IF base_relation <> 'Quan hệ khác' THEN
+        RETURN base_relation;
+    END IF;
+
+    SELECT CASE
+        WHEN father_handle = p_person2_handle THEN mother_handle
+        WHEN mother_handle = p_person2_handle THEN father_handle
+    END
+    INTO spouse_of_person2
+    FROM families
+    WHERE father_handle = p_person2_handle OR mother_handle = p_person2_handle
+    LIMIT 1;
+
+    IF spouse_of_person2 IS NOT NULL THEN
+        base_relation := get_blood_kinship_relationship(p_person1_handle, spouse_of_person2);
+        mapped_relation := map_spouse_relation(base_relation, (SELECT gender FROM people WHERE handle = spouse_of_person2 LIMIT 1), person2.gender);
+        IF mapped_relation IS NOT NULL THEN
+            RETURN mapped_relation;
+        END IF;
+    END IF;
+
+    SELECT CASE
+        WHEN father_handle = p_person1_handle THEN mother_handle
+        WHEN mother_handle = p_person1_handle THEN father_handle
+    END
+    INTO spouse_of_person1
+    FROM families
+    WHERE father_handle = p_person1_handle OR mother_handle = p_person1_handle
+    LIMIT 1;
+
+    IF spouse_of_person1 IS NOT NULL THEN
+        base_relation := get_blood_kinship_relationship(spouse_of_person1, p_person2_handle);
+        IF base_relation <> 'Quan hệ khác' THEN
+            IF base_relation IN ('Anh/Em trai', 'Chị/Em gái') THEN
+                IF (SELECT gender FROM people WHERE handle = spouse_of_person1 LIMIT 1) = 1 THEN
+                    RETURN CASE WHEN person2.gender = 1 THEN 'Anh/Em chồng' ELSE 'Chị/Em chồng' END;
+                ELSE
+                    RETURN CASE WHEN person2.gender = 1 THEN 'Anh/Em vợ' ELSE 'Chị/Em vợ' END;
+                END IF;
+            END IF;
+
+            RETURN base_relation;
+        END IF;
+    END IF;
+
+    IF spouse_of_person1 IS NOT NULL AND spouse_of_person2 IS NOT NULL THEN
+        base_relation := get_blood_kinship_relationship(spouse_of_person1, spouse_of_person2);
+        mapped_relation := map_spouse_relation(base_relation, (SELECT gender FROM people WHERE handle = spouse_of_person2 LIMIT 1), person2.gender);
+        IF mapped_relation IS NOT NULL THEN
+            RETURN mapped_relation;
+        END IF;
+    END IF;
+
+    RETURN 'Quan hệ khác';
+END;
+$$ LANGUAGE plpgsql STABLE;
 
 -- Override kinship function with stricter relationship checks.
 CREATE OR REPLACE FUNCTION get_kinship_relationship(
@@ -980,6 +1332,585 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
+
+*/
+
+CREATE OR REPLACE FUNCTION find_spouse_handle(p_person_handle TEXT)
+RETURNS TEXT AS $$
+DECLARE
+    spouse_handle TEXT;
+BEGIN
+    SELECT CASE
+        WHEN father_handle = p_person_handle THEN mother_handle
+        WHEN mother_handle = p_person_handle THEN father_handle
+    END
+    INTO spouse_handle
+    FROM families
+    WHERE father_handle = p_person_handle OR mother_handle = p_person_handle
+    LIMIT 1;
+
+    RETURN spouse_handle;
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION blood_lineal_label(
+    p_distance INT,
+    p_gender INT,
+    p_direction TEXT
+)
+RETURNS TEXT AS $$
+BEGIN
+    IF p_direction = 'up' THEN
+        CASE p_distance
+            WHEN 1 THEN RETURN CASE WHEN p_gender = 1 THEN 'Cha' ELSE 'Mẹ' END;
+            WHEN 2 THEN RETURN CASE WHEN p_gender = 1 THEN 'Ông' ELSE 'Bà' END;
+            WHEN 3 THEN RETURN CASE WHEN p_gender = 1 THEN 'Cụ ông' ELSE 'Cụ bà' END;
+            WHEN 4 THEN RETURN CASE WHEN p_gender = 1 THEN 'Kỵ ông' ELSE 'Kỵ bà' END;
+            WHEN 5 THEN RETURN 'Cụ tổ';
+            WHEN 6 THEN RETURN 'Cao tổ';
+            ELSE RETURN 'Tổ tiên';
+        END CASE;
+    END IF;
+
+    CASE p_distance
+        WHEN 1 THEN RETURN CASE WHEN p_gender = 1 THEN 'Con trai' ELSE 'Con gái' END;
+        WHEN 2 THEN RETURN CASE WHEN p_gender = 1 THEN 'Cháu trai' ELSE 'Cháu gái' END;
+        WHEN 3 THEN RETURN CASE WHEN p_gender = 1 THEN 'Chắt trai' ELSE 'Chắt gái' END;
+        WHEN 4 THEN RETURN CASE WHEN p_gender = 1 THEN 'Chút trai' ELSE 'Chút gái' END;
+        WHEN 5 THEN RETURN CASE WHEN p_gender = 1 THEN 'Chít trai' ELSE 'Chít gái' END;
+        WHEN 6 THEN RETURN CASE WHEN p_gender = 1 THEN 'Huyền tôn' ELSE 'Huyền tôn nữ' END;
+        ELSE RETURN 'Hậu duệ';
+    END CASE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION blood_collateral_label(
+    p_d1 INT,
+    p_d2 INT,
+    p_gender INT
+)
+RETURNS TEXT AS $$
+DECLARE
+    gap INT;
+BEGIN
+    IF p_d1 = 1 AND p_d2 = 1 THEN
+        RETURN CASE WHEN p_gender = 1 THEN 'Anh/Em trai' ELSE 'Chị/Em gái' END;
+    END IF;
+
+    IF p_d1 = p_d2 THEN
+        RETURN CASE WHEN p_gender = 1 THEN 'Anh/Em họ trai' ELSE 'Anh/Em họ gái' END;
+    END IF;
+
+    IF p_d1 > p_d2 THEN
+        gap := p_d1 - p_d2;
+        CASE gap
+            WHEN 1 THEN RETURN CASE WHEN p_gender = 1 THEN 'Chú/Bác/Cậu' ELSE 'Cô/Dì' END;
+            WHEN 2 THEN RETURN CASE WHEN p_gender = 1 THEN 'Ông chú/bác' ELSE 'Bà cô/dì' END;
+            WHEN 3 THEN RETURN CASE WHEN p_gender = 1 THEN 'Cụ ông bên bác/chú' ELSE 'Cụ bà bên cô/dì' END;
+            WHEN 4 THEN RETURN CASE WHEN p_gender = 1 THEN 'Kỵ ông bên bác/chú' ELSE 'Kỵ bà bên cô/dì' END;
+            ELSE RETURN 'Bậc trên trong họ';
+        END CASE;
+    END IF;
+
+    gap := p_d2 - p_d1;
+    CASE gap
+        WHEN 1 THEN RETURN CASE WHEN p_gender = 1 THEN 'Cháu trai' ELSE 'Cháu gái' END;
+        WHEN 2 THEN RETURN CASE WHEN p_gender = 1 THEN 'Chắt trai' ELSE 'Chắt gái' END;
+        WHEN 3 THEN RETURN CASE WHEN p_gender = 1 THEN 'Chút trai' ELSE 'Chút gái' END;
+        WHEN 4 THEN RETURN CASE WHEN p_gender = 1 THEN 'Chít trai' ELSE 'Chít gái' END;
+        WHEN 5 THEN RETURN CASE WHEN p_gender = 1 THEN 'Huyền tôn' ELSE 'Huyền tôn nữ' END;
+        ELSE RETURN 'Hậu duệ trong họ';
+    END CASE;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION get_blood_kinship_relationship(
+    p_person1_handle TEXT,
+    p_person2_handle TEXT
+)
+RETURNS TEXT AS $$
+DECLARE
+    person2 RECORD;
+    ancestor_distance INT;
+    descendant_distance INT;
+    common_d1 INT;
+    common_d2 INT;
+BEGIN
+    SELECT * INTO person2 FROM people WHERE handle = p_person2_handle LIMIT 1;
+
+    IF person2 IS NULL THEN
+        RETURN 'Quan hệ khác';
+    END IF;
+
+    WITH RECURSIVE ancestors(ancestor_handle, distance) AS (
+        SELECT parent_handle, 1
+        FROM (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[p_person1_handle]
+        ) direct_parents
+        WHERE parent_handle IS NOT NULL
+
+        UNION
+
+        SELECT parent.parent_handle, ancestors.distance + 1
+        FROM ancestors
+        JOIN LATERAL (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[ancestors.ancestor_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[ancestors.ancestor_handle]
+        ) parent ON parent.parent_handle IS NOT NULL
+    )
+    SELECT MIN(distance)
+    INTO ancestor_distance
+    FROM ancestors
+    WHERE ancestor_handle = p_person2_handle;
+
+    IF ancestor_distance IS NOT NULL THEN
+        RETURN blood_lineal_label(ancestor_distance, person2.gender, 'up');
+    END IF;
+
+    WITH RECURSIVE descendants(descendant_handle, distance) AS (
+        SELECT child_handle, 1
+        FROM (
+            SELECT unnest(children) AS child_handle
+            FROM families
+            WHERE father_handle = p_person1_handle OR mother_handle = p_person1_handle
+        ) direct_children
+
+        UNION
+
+        SELECT child.child_handle, descendants.distance + 1
+        FROM descendants
+        JOIN LATERAL (
+            SELECT unnest(children) AS child_handle
+            FROM families
+            WHERE father_handle = descendants.descendant_handle
+               OR mother_handle = descendants.descendant_handle
+        ) child ON true
+    )
+    SELECT MIN(distance)
+    INTO descendant_distance
+    FROM descendants
+    WHERE descendant_handle = p_person2_handle;
+
+    IF descendant_distance IS NOT NULL THEN
+        RETURN blood_lineal_label(descendant_distance, person2.gender, 'down');
+    END IF;
+
+    WITH RECURSIVE a1(ancestor_handle, distance) AS (
+        SELECT p_person1_handle, 0
+        UNION
+        SELECT parent.parent_handle, a1.distance + 1
+        FROM a1
+        JOIN LATERAL (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a1.ancestor_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a1.ancestor_handle]
+        ) parent ON parent.parent_handle IS NOT NULL
+    ),
+    a2(ancestor_handle, distance) AS (
+        SELECT p_person2_handle, 0
+        UNION
+        SELECT parent.parent_handle, a2.distance + 1
+        FROM a2
+        JOIN LATERAL (
+            SELECT father_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a2.ancestor_handle]
+            UNION
+            SELECT mother_handle AS parent_handle
+            FROM families
+            WHERE children @> ARRAY[a2.ancestor_handle]
+        ) parent ON parent.parent_handle IS NOT NULL
+    ),
+    common AS (
+        SELECT a1.distance AS d1, a2.distance AS d2
+        FROM a1
+        JOIN a2 USING (ancestor_handle)
+        WHERE a1.distance > 0 OR a2.distance > 0
+        ORDER BY (a1.distance + a2.distance), GREATEST(a1.distance, a2.distance)
+        LIMIT 1
+    )
+    SELECT d1, d2
+    INTO common_d1, common_d2
+    FROM common;
+
+    IF common_d1 IS NOT NULL AND common_d2 IS NOT NULL THEN
+        RETURN blood_collateral_label(common_d1, common_d2, person2.gender);
+    END IF;
+
+    RETURN 'Quan hệ khác';
+END;
+$$ LANGUAGE plpgsql STABLE;
+
+CREATE OR REPLACE FUNCTION map_spouse_relation(
+    p_base_relation TEXT,
+    p_base_gender INT,
+    p_spouse_gender INT
+)
+RETURNS TEXT AS $$
+BEGIN
+    IF p_base_relation IN ('Anh/Em trai', 'Chị/Em gái') THEN
+        RETURN CASE WHEN p_base_gender = 1 THEN 'Chị/Em dâu' ELSE 'Anh/Em rể' END;
+    END IF;
+
+    IF p_base_relation IN ('Anh/Em chồng', 'Chị/Em chồng', 'Anh/Em vợ', 'Chị/Em vợ') THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Anh/Em rể' ELSE 'Chị/Em dâu' END;
+    END IF;
+
+    IF p_base_relation = 'Con trai' THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Con trai' ELSE 'Con dâu' END;
+    END IF;
+
+    IF p_base_relation = 'Con gái' THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Con rể' ELSE 'Con gái' END;
+    END IF;
+
+    IF p_base_relation IN ('Cháu trai', 'Cháu gái') THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Cháu trai' ELSE 'Cháu gái' END;
+    END IF;
+
+    IF p_base_relation IN ('Chắt trai', 'Chắt gái') THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Chắt trai' ELSE 'Chắt gái' END;
+    END IF;
+
+    IF p_base_relation IN ('Chút trai', 'Chút gái') THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Chút trai' ELSE 'Chút gái' END;
+    END IF;
+
+    IF p_base_relation IN ('Chít trai', 'Chít gái') THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Chít trai' ELSE 'Chít gái' END;
+    END IF;
+
+    IF p_base_relation IN ('Huyền tôn', 'Huyền tôn nữ') THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Huyền tôn' ELSE 'Huyền tôn nữ' END;
+    END IF;
+
+    IF p_base_relation = 'Chú/Bác/Cậu' THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Ông chú/dượng' ELSE 'Bà mợ/bác' END;
+    END IF;
+
+    IF p_base_relation = 'Cô/Dì' THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Ông chú/dượng' ELSE 'Bà cô/dì' END;
+    END IF;
+
+    IF p_base_relation = 'Ông chú/bác' THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Ông chú/bác' ELSE 'Bà mự/bác' END;
+    END IF;
+
+    IF p_base_relation = 'Bà cô/dì' THEN
+        RETURN CASE WHEN p_spouse_gender = 1 THEN 'Ông chú/dượng' ELSE 'Bà cô/dì' END;
+    END IF;
+
+    IF p_base_relation IN (
+        'Cha', 'Mẹ', 'Ông', 'Bà', 'Cụ ông', 'Cụ bà', 'Kỵ ông', 'Kỵ bà',
+        'Cụ tổ', 'Cao tổ', 'Tổ tiên', 'Bậc trên trong họ',
+        'Cụ ông bên bác/chú', 'Cụ bà bên cô/dì',
+        'Kỵ ông bên bác/chú', 'Kỵ bà bên cô/dì',
+        'Hậu duệ', 'Hậu duệ trong họ'
+    ) THEN
+        RETURN p_base_relation;
+    END IF;
+
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+CREATE OR REPLACE FUNCTION get_kinship_relationship(
+    p_person1_handle TEXT,
+    p_person2_handle TEXT
+)
+RETURNS TEXT AS $$
+DECLARE
+    person1 RECORD;
+    person2 RECORD;
+    spouse_of_person1 TEXT;
+    spouse_of_person2 TEXT;
+    spouse1_gender INT;
+    spouse2_gender INT;
+    base_relation TEXT;
+    mapped_relation TEXT;
+    spouse_child_gender INT;
+BEGIN
+    SELECT * INTO person1 FROM people WHERE handle = p_person1_handle LIMIT 1;
+    SELECT * INTO person2 FROM people WHERE handle = p_person2_handle LIMIT 1;
+
+    IF person1 IS NULL OR person2 IS NULL THEN
+        RETURN 'Không xác định';
+    END IF;
+
+    IF p_person1_handle = p_person2_handle THEN
+        RETURN 'Chính mình';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM families
+        WHERE (father_handle = p_person1_handle AND mother_handle = p_person2_handle)
+           OR (father_handle = p_person2_handle AND mother_handle = p_person1_handle)
+    ) THEN
+        IF person2.gender = 1 THEN
+            RETURN 'Chồng';
+        ELSIF person2.gender = 2 THEN
+            RETURN 'Vợ';
+        END IF;
+        RETURN 'Vợ/Chồng';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p1_grandparents
+        JOIN families grand_sibling_family
+          ON grand_sibling_family.children @> ARRAY[p1_grandparents.grandparent_handle]
+        CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+        JOIN families child_of_grand_sibling_family
+          ON child_of_grand_sibling_family.father_handle = grand_sibling_handle
+          OR child_of_grand_sibling_family.mother_handle = grand_sibling_handle
+        WHERE grand_sibling_handle <> p1_grandparents.grandparent_handle
+          AND child_of_grand_sibling_family.children @> ARRAY[p_person2_handle]
+    ) THEN
+        RETURN CASE WHEN person2.gender = 1 THEN 'Chú/Bác/Cậu' ELSE 'Cô/Dì' END;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p2_grandparents
+        JOIN families grand_sibling_family
+          ON grand_sibling_family.children @> ARRAY[p2_grandparents.grandparent_handle]
+        CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+        JOIN families child_of_grand_sibling_family
+          ON child_of_grand_sibling_family.father_handle = grand_sibling_handle
+          OR child_of_grand_sibling_family.mother_handle = grand_sibling_handle
+        WHERE grand_sibling_handle <> p2_grandparents.grandparent_handle
+          AND child_of_grand_sibling_family.children @> ARRAY[p_person1_handle]
+    ) THEN
+        RETURN CASE WHEN person2.gender = 1 THEN 'Cháu trai' ELSE 'Cháu gái' END;
+    END IF;
+
+    base_relation := get_blood_kinship_relationship(p_person1_handle, p_person2_handle);
+    IF base_relation <> 'Quan hệ khác' THEN
+        RETURN base_relation;
+    END IF;
+
+    spouse_of_person1 := find_spouse_handle(p_person1_handle);
+    spouse_of_person2 := find_spouse_handle(p_person2_handle);
+
+    IF spouse_of_person1 IS NOT NULL THEN
+        SELECT gender INTO spouse1_gender
+        FROM people
+        WHERE handle = spouse_of_person1
+        LIMIT 1;
+    END IF;
+
+    IF spouse_of_person2 IS NOT NULL THEN
+        SELECT gender INTO spouse2_gender
+        FROM people
+        WHERE handle = spouse_of_person2
+        LIMIT 1;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM families own_family
+        CROSS JOIN LATERAL unnest(own_family.children) AS child_handle
+        JOIN families child_family
+          ON (child_family.father_handle = child_handle AND child_family.mother_handle = p_person2_handle)
+          OR (child_family.mother_handle = child_handle AND child_family.father_handle = p_person2_handle)
+        WHERE own_family.father_handle = p_person1_handle
+           OR own_family.mother_handle = p_person1_handle
+    ) THEN
+        RETURN CASE WHEN person2.gender = 1 THEN 'Con rể' ELSE 'Con dâu' END;
+    END IF;
+
+    SELECT child_person.gender
+    INTO spouse_child_gender
+    FROM families own_family
+    CROSS JOIN LATERAL unnest(own_family.children) AS child_handle
+    JOIN people child_person ON child_person.handle = child_handle
+    JOIN families child_family
+      ON (child_family.father_handle = child_handle AND child_family.mother_handle = p_person1_handle)
+      OR (child_family.mother_handle = child_handle AND child_family.father_handle = p_person1_handle)
+    WHERE own_family.father_handle = p_person2_handle
+       OR own_family.mother_handle = p_person2_handle
+    LIMIT 1;
+
+    IF spouse_child_gender IS NOT NULL THEN
+        IF spouse_child_gender = 1 THEN
+            RETURN CASE WHEN person2.gender = 1 THEN 'Bố chồng' ELSE 'Mẹ chồng' END;
+        ELSIF spouse_child_gender = 2 THEN
+            RETURN CASE WHEN person2.gender = 1 THEN 'Bố vợ' ELSE 'Mẹ vợ' END;
+        END IF;
+    END IF;
+
+    IF spouse_of_person1 IS NOT NULL THEN
+        base_relation := get_blood_kinship_relationship(spouse_of_person1, p_person2_handle);
+
+        IF base_relation IN ('Anh/Em trai', 'Chị/Em gái') THEN
+            IF spouse1_gender = 1 THEN
+                RETURN CASE WHEN person2.gender = 1 THEN 'Anh/Em chồng' ELSE 'Chị/Em chồng' END;
+            END IF;
+            RETURN CASE WHEN person2.gender = 1 THEN 'Anh/Em vợ' ELSE 'Chị/Em vợ' END;
+        END IF;
+
+        IF base_relation IN (
+            'Chú/Bác/Cậu', 'Cô/Dì', 'Ông chú/bác', 'Bà cô/dì',
+            'Cháu trai', 'Cháu gái', 'Chắt trai', 'Chắt gái',
+            'Chút trai', 'Chút gái', 'Chít trai', 'Chít gái',
+            'Huyền tôn', 'Huyền tôn nữ', 'Bậc trên trong họ',
+            'Hậu duệ trong họ'
+        ) THEN
+            RETURN base_relation;
+        END IF;
+    END IF;
+
+    IF spouse_of_person2 IS NOT NULL THEN
+        base_relation := get_blood_kinship_relationship(p_person1_handle, spouse_of_person2);
+        mapped_relation := map_spouse_relation(base_relation, spouse2_gender, person2.gender);
+
+        IF mapped_relation IS NOT NULL THEN
+            RETURN mapped_relation;
+        END IF;
+    END IF;
+
+    IF spouse_of_person1 IS NOT NULL AND spouse_of_person2 IS NOT NULL THEN
+        base_relation := get_blood_kinship_relationship(spouse_of_person1, spouse_of_person2);
+
+        IF base_relation IN ('Anh/Em trai', 'Chị/Em gái') THEN
+            RETURN CASE WHEN person2.gender = 1 THEN 'Anh/Em rể' ELSE 'Chị/Em dâu' END;
+        END IF;
+
+        mapped_relation := map_spouse_relation(base_relation, spouse2_gender, person2.gender);
+        IF mapped_relation IS NOT NULL THEN
+            RETURN mapped_relation;
+        END IF;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person1_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p1_grandparents
+        JOIN families grand_sibling_family
+          ON grand_sibling_family.children @> ARRAY[p1_grandparents.grandparent_handle]
+        CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+        JOIN families child_of_grand_sibling_family
+          ON child_of_grand_sibling_family.father_handle = grand_sibling_handle
+          OR child_of_grand_sibling_family.mother_handle = grand_sibling_handle
+        WHERE grand_sibling_handle <> p1_grandparents.grandparent_handle
+          AND child_of_grand_sibling_family.children @> ARRAY[p_person2_handle]
+    ) THEN
+        RETURN CASE WHEN person2.gender = 1 THEN 'Chú/Bác/Cậu' ELSE 'Cô/Dì' END;
+    END IF;
+
+    IF EXISTS (
+        SELECT 1
+        FROM (
+            SELECT grandparent_handle
+            FROM (
+                SELECT father_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+                UNION
+                SELECT mother_handle AS parent_handle
+                FROM families
+                WHERE children @> ARRAY[p_person2_handle]
+            ) parents
+            JOIN LATERAL (
+                SELECT father_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+                UNION
+                SELECT mother_handle AS grandparent_handle
+                FROM families
+                WHERE children @> ARRAY[parents.parent_handle]
+            ) grandparents ON grandparents.grandparent_handle IS NOT NULL
+        ) p2_grandparents
+        JOIN families grand_sibling_family
+          ON grand_sibling_family.children @> ARRAY[p2_grandparents.grandparent_handle]
+        CROSS JOIN LATERAL unnest(grand_sibling_family.children) AS grand_sibling_handle
+        JOIN families child_of_grand_sibling_family
+          ON child_of_grand_sibling_family.father_handle = grand_sibling_handle
+          OR child_of_grand_sibling_family.mother_handle = grand_sibling_handle
+        WHERE grand_sibling_handle <> p2_grandparents.grandparent_handle
+          AND child_of_grand_sibling_family.children @> ARRAY[p_person1_handle]
+    ) THEN
+        RETURN CASE WHEN person2.gender = 1 THEN 'Cháu trai' ELSE 'Cháu gái' END;
+    END IF;
+
+    RETURN 'Quan hệ khác';
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 DROP TABLE IF EXISTS profiles;
 
