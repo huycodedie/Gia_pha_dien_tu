@@ -9,6 +9,7 @@ import {
   AddSpouseDialog,
   AddChildDialog,
 } from "@/components/contribute-dialog";
+import { ChatWindow } from "@/components/chat-window";
 
 import {
   Search,
@@ -41,6 +42,7 @@ import {
   ArrowDown,
   GripVertical,
   MessageSquarePlus,
+  MessageCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -306,6 +308,8 @@ export default function TreeViewPage() {
     null,
   );
   const [kinshipError, setKinshipError] = useState<string | null>(null);
+  // Chat AI state
+  const [showChat, setShowChat] = useState(false);
   const { isAdmin, profile } = useAuth();
 
   // Check if user has their own family tree
@@ -1826,6 +1830,25 @@ export default function TreeViewPage() {
             fetchTreeData().then(setTreeData);
           }}
         />
+      )}
+
+      {/* Chat AI Floating Button */}
+      <button
+        onClick={() => setShowChat(!showChat)}
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center z-40"
+        title="Tro ly AI"
+      >
+        <MessageCircle className="w-6 h-6" />
+      </button>
+
+      {/* Chat AI Window */}
+      {showChat && (
+        <div className="fixed bottom-24 right-6 w-80 h-96 bg-white rounded-lg shadow-2xl border border-slate-200 flex flex-col z-40">
+          <ChatWindow
+            treeData={treeData || undefined}
+            onClose={() => setShowChat(false)}
+          />
+        </div>
       )}
     </div>
   );
