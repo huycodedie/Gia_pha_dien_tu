@@ -1835,20 +1835,48 @@ export default function TreeViewPage() {
       {/* Chat AI Floating Button */}
       <button
         onClick={() => setShowChat(!showChat)}
-        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-500 hover:bg-blue-600 text-white shadow-lg hover:shadow-xl transition-all duration-200 flex items-center justify-center z-40"
-        title="Tro ly AI"
+        className="fixed bottom-6 right-6 group w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/90 via-indigo-600/85
+          to-purple-700/90 backdrop-blur-2xl border border-white/10 shadow-[0_8px_40px_rgba(79,70,229,0.45)] hover:scale-105
+          hover:shadow-purple-500/40 active:scale-95 transition-all duration-300 flex items-center justify-center overflow-hidden z-50"
+        title="Trợ lý AI"
       >
-        <MessageCircle className="w-6 h-6" />
+        {/* Liquid glass overlay */}
+        <div
+          className="absolute inset-0 rounded-full bg-gradient-to-br from-white/25 via-white/5 to-transparent opacity-90"
+        />
+
+        {/* Inner glow border */}
+        <div
+          className="absolute inset-[2px] rounded-full border border-white/10"
+        />
+
+        {/* Floating neon glow */}
+        <div
+          className=" absolute w-12 h-12 rounded-full bg-cyan-400/20 blur-2xl"
+        />
+
+        {/* Icon */}
+        <MessageCircle
+          className="w-7 h-7 text-white relative z-10 drop-shadow-[0_2px_8px_rgba(255,255,255,0.35)]"
+        />
+
+        {/* Notification ping */}
+        {!showChat && (
+          <span className="absolute top-2 right-2 flex h-3 w-3 z-20">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-300 opacity-75" />
+            <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-400" />
+          </span>
+        )}
       </button>
 
       {/* Chat AI Window */}
       {showChat && (
-        <div className="fixed bottom-24 right-6 w-80 h-96 bg-white rounded-lg shadow-2xl border border-slate-200 flex flex-col z-40">
-          <ChatWindow
-            treeData={treeData || undefined}
-            onClose={() => setShowChat(false)}
-          />
-        </div>
+        <div className="fixed bottom-24 right-6 w-91 h-[600px] bg-white/95 backdrop-blur rounded-2xl shadow-2xl overflow-hidden flex flex-col z-50">
+        <ChatWindow
+          treeData={treeData || undefined}
+          onClose={() => setShowChat(false)}
+        />
+      </div>
       )}
     </div>
   );

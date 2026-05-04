@@ -12,8 +12,15 @@ async function generateGeminiResponse(prompt: string, apiKey: string) {
 }
 
 export async function POST(request: Request) {
+  let userId: string | null = null;
+  let message: string | null = null;
+  let context: any = null;
+
   try {
-    const { message, context, userId } = await request.json();
+    const body = await request.json();
+    userId = body.userId;
+    message = body.message;
+    context = body.context;
 
     console.log("Chat API called with:", {
       message: message?.substring(0, 100),
@@ -99,11 +106,23 @@ Câu hỏi: ${message}`;
     });
   } catch (error) {
     console.error("Chat API error:", error);
-    console.error("Error details:", {
-      name: (error as any)?.name,
-      message: (error as any)?.message,
-      stack: (error as any)?.stack,
-    });
+
+    // Log error to database for admin monitoring
+    try {
+      const supabase = createServiceClient();
+      await supabase.from("error_logs").insert({
+        user_id: userId || null,
+        error_type: "api",
+        error_message: `Chat API Error: ${error instanceof Error ? error.message : String(error)}`,
+        error_stack: error instanceof Error ? error.stack : null,
+        url: "/api/chat",
+        request_data: { message: message?.substring(0, 100) },
+        context_data: { hasContext: !!context },
+        severity: "high",
+      });
+    } catch (logError) {
+      console.error("Failed to log error:", logError);
+    }
 
     // Generic error handling for Gemini
     if ((error as any)?.message?.includes("401")) {
@@ -130,7 +149,7 @@ Câu hỏi: ${message}`;
     }
 
     return NextResponse.json(
-      { error: "Lỗi khi xử lý yêu cầu. Vui lòng thử lại." },
+      { error: "Lỗi server. Đã ghi nhận và sẽ được xử lý." },
       { status: 500 },
     );
   }

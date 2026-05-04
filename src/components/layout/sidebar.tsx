@@ -18,6 +18,7 @@ import {
   Crown,
   Receipt,
   CreditCard,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import { useFamilyName } from "@/lib/use-family-name";
 
 const adminItems = [
   { href: "/admin/users", label: "Quản lý Users", icon: Shield },
+  { href: "/admin/errors", label: "Quản lý Lỗi", icon: AlertTriangle },
   // { href: "/admin/edits", label: "Kiểm duyệt", icon: ClipboardCheck },
   { href: "/admin/plans", label: "Thanh toán", icon: CreditCard },
   { href: "/admin/invoices", label: "Hóa đơn", icon: Receipt },
