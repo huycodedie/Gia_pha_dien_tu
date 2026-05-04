@@ -56,6 +56,11 @@ function RegisterGuestForm() {
       return;
     }
 
+    if (displayName.trim().length < 2) {
+      toast.error("Tên hiển thị phải có ít nhất 2 ký tự");
+      return;
+    }
+
     if (password.length < 6) {
       toast.error("Mật khẩu phải có ít nhất 6 ký tự");
       return;
@@ -67,6 +72,33 @@ function RegisterGuestForm() {
     }
 
     setLoading(true);
+
+    // Check if display_name already exists
+    try {
+      const response = await fetch("/api/auth/check-display-name", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ displayName: displayName.trim() }),
+      });
+      const data = await response.json();
+      if (data.exists) {
+        toast.error(
+          "Tên hiển thị này đã được sử dụng. Vui lòng chọn tên khác.",
+        );
+        setLoading(false);
+        return;
+      }
+      if (data.message) {
+        toast.error(data.message);
+        setLoading(false);
+        return;
+      }
+    } catch (err) {
+      console.error("Error checking display_name:", err);
+      toast.error("Lỗi kiểm tra tên hiển thị");
+      setLoading(false);
+      return;
+    }
 
     const { error } = await signUpGuest(
       invitationCode.trim(),

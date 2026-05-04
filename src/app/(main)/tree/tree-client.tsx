@@ -1502,6 +1502,7 @@ export default function TreeViewPage() {
                     return (
                       <CardContextMenu
                         person={person}
+                        families={treeData?.families || []}
                         x={contextMenu.x}
                         y={contextMenu.y}
                         profile={profile}
@@ -1833,6 +1834,7 @@ export default function TreeViewPage() {
 // === Card Context Menu ===
 function CardContextMenu({
   person,
+  families,
   x,
   y,
   profile,
@@ -1849,6 +1851,7 @@ function CardContextMenu({
   onClose,
 }: {
   person: TreeNode;
+  families: TreeFamily[];
   x: number;
   y: number;
   profile: any;
@@ -1864,6 +1867,16 @@ function CardContextMenu({
   onDelete: () => void;
   onClose: () => void;
 }) {
+  // Check if person already has a spouse
+  const hasSpouse = person.families.some((familyHandle) => {
+    const family = families.find((f) => f.handle === familyHandle);
+    if (!family) return false;
+    // Person has spouse if they are father or mother in a family
+    const personIsParent =
+      (family.fatherHandle === person.handle && family.motherHandle) ||
+      (family.motherHandle === person.handle && family.fatherHandle);
+    return personIsParent;
+  });
   return (
     <div
       className="absolute z-50 animate-in fade-in zoom-in-95 duration-150"
@@ -1913,14 +1926,15 @@ function CardContextMenu({
             desc="Mở trang cá nhân"
             onClick={onViewDetail}
           />
-          {(profile?.role === "admin" || profile?.role === "user") && (
-            <MenuAction
-              icon={<UserPlus className="w-4 h-4" />}
-              label="Thêm vợ/chồng"
-              desc="Thêm người phối ngẫu"
-              onClick={onAddSpouse}
-            />
-          )}
+          {(profile?.role === "admin" || profile?.role === "user") &&
+            !hasSpouse && (
+              <MenuAction
+                icon={<UserPlus className="w-4 h-4" />}
+                label="Thêm vợ/chồng"
+                desc="Thêm người phối ngẫu"
+                onClick={onAddSpouse}
+              />
+            )}
           {(profile?.role === "admin" || profile?.role === "user") &&
             person.families.length > 0 && (
               <MenuAction

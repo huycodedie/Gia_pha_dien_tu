@@ -383,6 +383,7 @@ export default function AdminInvoicesPage() {
       "Subscription",
       sub.profile.email,
       sub.profile.display_name || "N/A",
+      sub.expires_at,
       sub.plan.name,
       normalizeDiscountPercent(sub.plan.discount_percent) > 0
         ? `${sub.plan.price?.toLocaleString("vi-VN")} ${sub.plan.currency} -> ${getDiscountedAmount(sub.plan.price, sub.plan.discount_percent).toLocaleString("vi-VN")} ${sub.plan.currency} (-${normalizeDiscountPercent(sub.plan.discount_percent)}%)`
@@ -777,7 +778,7 @@ export default function AdminInvoicesPage() {
                         </TableCell>
                         
                         <TableCell>{sub.plan.duration_days} ngày</TableCell>
-                        <TableCell>-</TableCell>
+                        <TableCell>{formatDateTime(sub.expires_at)}</TableCell>
                         <TableCell>
                           <Badge
                             className={

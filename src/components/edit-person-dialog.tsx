@@ -118,7 +118,7 @@ export function EditPersonDialog({
 
     const trimmedEmail = email.trim();
     if (trimmedEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmedEmail)) {
-      setError("Email khĂ´ng há»£p lá»‡");
+      setError("Email không hợp lệ");
       return;
     }
 

@@ -122,7 +122,7 @@ export async function POST(
 
     const randomNum = Math.floor(1000 + Math.random() * 9000);
     const email = savedEmail || `${nameSlug}${randomNum}@gmail.com`;
-    const password = "123456";
+    const password = "12345678";
 
     const { data: createData, error: createError } =
       await adminSupabase.auth.admin.createUser({

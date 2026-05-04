@@ -125,11 +125,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .maybeSingle();
 
       if (!existing) {
+        const displayName =
+          u.user_metadata?.display_name || u.email?.split("@")[0] || "";
+
+        if (!displayName.trim() || displayName.trim().length < 2) {
+          console.error("Invalid display_name for user:", u.id);
+          return;
+        }
+
+        // Check if display_name already exists
+        const { data: existingDisplayName } = await supabase
+          .from("profiles")
+          .select("id")
+          .eq("display_name", displayName.trim())
+          .maybeSingle();
+
+        if (existingDisplayName) {
+          console.error("Display name already exists for user:", u.id);
+          return;
+        }
+
         await supabase.from("profiles").insert({
           id: u.id,
           email: u.email || "",
-          display_name:
-            u.user_metadata?.display_name || u.email?.split("@")[0] || "",
+          display_name: displayName.trim(),
           role: "viewer",
           status: "active",
         });
@@ -197,11 +216,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signUp = useCallback(
     async (email: string, password: string, displayName?: string) => {
+      const finalDisplayName = displayName || email.split("@")[0];
+
+      if (!finalDisplayName.trim() || finalDisplayName.trim().length < 2) {
+        return {
+          error: "Tên hiển thị không được để trống và phải có ít nhất 2 ký tự.",
+        };
+      }
+
+      // Check if display_name already exists
+      try {
+        const response = await fetch("/api/auth/check-display-name", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ displayName: finalDisplayName.trim() }),
+        });
+        const data = await response.json();
+        if (data.exists) {
+          return {
+            error: "Họ tên hiển thị này đã được sử dụng. Vui lòng chọn họ tên khác.",
+          };
+        }
+        if (data.message) {
+          return { error: data.message };
+        }
+      } catch (err) {
+        console.error("Error checking display_name:", err);
+        return { error: "Lỗi kiểm tra tên hiển thị." };
+      }
+
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: {
-          data: { display_name: displayName || email.split("@")[0] },
+          data: { display_name: finalDisplayName.trim() },
         },
       });
       if (error) {

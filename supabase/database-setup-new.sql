@@ -1919,7 +1919,7 @@ DROP TABLE IF EXISTS profiles;
 CREATE TABLE profiles (
     id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
     email TEXT UNIQUE,
-    display_name TEXT,
+    display_name TEXT UNIQUE NOT NULL DEFAULT '',
     phone TEXT,
     username TEXT UNIQUE,
     role TEXT DEFAULT 'viewer' CHECK (role IN ('admin','user','viewer','guest')),
@@ -2141,6 +2141,9 @@ CREATE INDEX IF NOT EXISTS idx_posts_author ON posts(author_id);
 CREATE INDEX IF NOT EXISTS idx_posts_created ON posts(created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_comments_post ON comments(post_id);
 CREATE INDEX IF NOT EXISTS idx_comments_author ON comments(author_id);
+CREATE INDEX IF NOT EXISTS idx_profiles_display_name ON profiles(display_name);
+CREATE INDEX IF NOT EXISTS idx_profiles_email ON profiles(email);
+CREATE INDEX IF NOT EXISTS idx_profiles_username ON profiles(username);
 
 
 -- â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
@@ -2593,13 +2596,13 @@ BEGIN
         RETURN false;
     END IF;
 
-    -- Check if plan is free and has usage limits
-    IF plan_record.is_free AND plan_record.max_uses IS NOT NULL THEN
-        SELECT usage_count INTO current_usage_count
+    -- Check plan usage limit for both free and paid plans
+    IF plan_record.max_uses IS NOT NULL THEN
+        SELECT COALESCE(usage_count, 0) INTO current_usage_count
         FROM user_plan_usage
         WHERE user_id = p_user_id AND plan_id = p_plan_id;
 
-        IF current_usage_count >= plan_record.max_uses THEN
+        IF COALESCE(current_usage_count, 0) >= plan_record.max_uses THEN
             RETURN false;
         END IF;
     END IF;
@@ -2617,6 +2620,9 @@ DECLARE
     subscription_id UUID;
     updated_rows INTEGER;
 BEGIN
+    -- Serialize upgrades per user/plan so max_uses cannot be bypassed by concurrent approvals.
+    PERFORM pg_advisory_xact_lock(hashtextextended(p_user_id::TEXT || ':' || p_plan_id::TEXT, 0));
+
     -- Check if user can use this plan
     IF NOT can_use_plan(p_user_id, p_plan_id) THEN
         RETURN 'Cannot use this plan';
@@ -2658,8 +2664,8 @@ BEGIN
         '/pricing'
     );
 
-    -- Track usage for free plans
-    IF plan_record.is_free THEN
+    -- Track usage for plans that have a purchase/use limit
+    IF plan_record.max_uses IS NOT NULL THEN
         INSERT INTO user_plan_usage (user_id, plan_id, usage_count, last_used_at)
         VALUES (p_user_id, p_plan_id, 1, now())
         ON CONFLICT (user_id, plan_id) DO UPDATE SET

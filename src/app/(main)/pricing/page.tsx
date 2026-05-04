@@ -335,8 +335,8 @@ export default function PricingPage() {
 
     if (hasActiveSubscription) return false;
 
-    // Check free plan usage limit
-    if (plan.is_free && plan.max_uses !== null) {
+    // Check plan usage limit
+    if (plan.max_uses !== null) {
       const usage = getPlanUsage(plan.id);
       if (usage && usage.usage_count >= plan.max_uses) {
         return false;
@@ -507,7 +507,7 @@ export default function PricingPage() {
                     <Zap className="h-4 w-4 text-orange-500" />
                     <span>Giới hạn {plan.people_limit} thành viên</span>
                   </div>
-                  {plan.is_free && plan.max_uses && (
+                  {plan.max_uses && (
                     <div className="flex items-center gap-2">
                       <Zap className="h-4 w-4 text-orange-500" />
                       <span>Giới hạn {plan.max_uses} lần sử dụng</span>
@@ -542,13 +542,12 @@ export default function PricingPage() {
                     </div>
                   )}
 
-                {plan.is_free &&
-                  plan.max_uses !== null &&
+                {plan.max_uses !== null &&
                   getPlanUsage(plan.id) &&
                   getPlanUsage(plan.id)!.usage_count >= plan.max_uses && (
                     <div className="p-3 bg-red-50 rounded-lg border border-red-300">
                       <div className="text-sm font-medium text-red-700">
-                        Đã dùng hết lần miễn phí
+                        Đã dùng hết số lần cho gói này
                       </div>
                       <div className="text-xs text-red-600">
                         Bạn đã dùng {plan.max_uses} lần. Không thể dùng thêm gói
@@ -576,8 +575,7 @@ export default function PricingPage() {
                     upgrading === plan.id ||
                     (loading && !plan.is_free);
 
-                  const hasReachedFreeLimit =
-                    plan.is_free &&
+                  const hasReachedPlanLimit =
                     plan.max_uses !== null &&
                     getPlanUsage(plan.id) &&
                     getPlanUsage(plan.id)!.usage_count >= plan.max_uses;
@@ -596,10 +594,10 @@ export default function PricingPage() {
                     );
                   }
 
-                  if (hasReachedFreeLimit) {
+                  if (hasReachedPlanLimit) {
                     return (
                       <Button className="w-full" disabled={true}>
-                        Đã dùng hết lần miễn phí
+                        Đã dùng hết số lần
                       </Button>
                     );
                   }

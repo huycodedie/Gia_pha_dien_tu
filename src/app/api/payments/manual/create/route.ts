@@ -99,6 +99,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const { data: canUsePlan, error: canUsePlanError } = await supabase.rpc(
+      "can_use_plan",
+      {
+        p_user_id: user.id,
+        p_plan_id: planId,
+      },
+    );
+
+    if (canUsePlanError) {
+      return NextResponse.json(
+        { error: canUsePlanError.message },
+        { status: 500 },
+      );
+    }
+
+    if (!canUsePlan) {
+      return NextResponse.json(
+        { error: "Bạn đã dùng hết số lần cho gói này." },
+        { status: 409 },
+      );
+    }
+
     const { data: existingPending } = await supabase
       .from("payment_orders")
       .select(

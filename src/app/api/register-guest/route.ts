@@ -12,7 +12,35 @@ export async function POST(request: Request) {
     );
   }
 
+  if (!displayName.trim() || displayName.trim().length < 2) {
+    return NextResponse.json(
+      { error: "Tên hiển thị không được để trống và phải có ít nhất 2 ký tự." },
+      { status: 400 },
+    );
+  }
+
   const supabase = createServiceClient();
+
+  // Check if display_name already exists
+  const { data: existingProfile, error: checkError } = await supabase
+    .from("profiles")
+    .select("id")
+    .eq("display_name", displayName.trim())
+    .single();
+
+  if (checkError && checkError.code !== "PGRST116") {
+    return NextResponse.json(
+      { error: "Lỗi kiểm tra tên hiển thị." },
+      { status: 500 },
+    );
+  }
+
+  if (existingProfile) {
+    return NextResponse.json(
+      { error: "Tên hiển thị này đã được sử dụng." },
+      { status: 400 },
+    );
+  }
 
   const { data: invitation, error: inviteError } = await supabase
     .from("guest_invitations")

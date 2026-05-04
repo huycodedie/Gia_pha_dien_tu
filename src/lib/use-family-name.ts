@@ -19,7 +19,6 @@ export function useFamilyName() {
       let query = supabase
         .from("people")
         .select("display_name, owner_id")
-        .eq("gender", 1)
         .eq("is_patrilineal", true)
         .order("generation")
         .order("display_name")
