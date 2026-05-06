@@ -2,19 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Users, Search, Filter } from "lucide-react";
+import { Users, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { useAuth } from "@/components/auth-provider";
 
 interface Person {
@@ -70,7 +62,7 @@ export default function PeopleListPage() {
       setLoading(false);
     };
     fetchPeople();
-  }, [user]);
+  }, [user, profile]);
 
   const filtered = people.filter((p) => {
     if (search && !p.displayName.toLowerCase().includes(search.toLowerCase()))
@@ -159,59 +151,73 @@ export default function PeopleListPage() {
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Họ tên</TableHead>
-                  <TableHead>Giới tính</TableHead>
-                  <TableHead>Năm sinh</TableHead>
-                  <TableHead>Năm mất</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {filtered.map((p) => (
-                  <TableRow
-                    key={p.handle}
-                    className="cursor-pointer hover:bg-accent/50"
-                    onClick={() => router.push(`/people/${p.handle}`)}
-                  >
-                    <TableCell className="font-medium">
-                      {p.displayName}
-                      {p.isPrivacyFiltered && (
-                        <span className="ml-1 text-amber-500">🔒</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">
-                        {p.gender === 1 ? "Nam" : p.gender === 2 ? "Nữ" : "?"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{p.birthYear || "—"}</TableCell>
-                    <TableCell>
-                      {p.deathYear || (p.isLiving ? "—" : "?")}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={p.isLiving ? "default" : "secondary"}>
-                        {p.isLiving ? "Còn sống" : "Đã mất"}
-                      </Badge>
-                    </TableCell>
-                  </TableRow>
-                ))}
-                {filtered.length === 0 && (
-                  <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="text-center text-muted-foreground py-8"
+            <div className="max-h-[600px] overflow-auto relative">
+              <table className="w-full caption-bottom text-sm">
+                <thead className="sticky top-0 z-50 bg-background shadow-sm [&_tr]:border-b">
+                  <tr className="border-b transition-colors">
+                    <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap">
+                      Họ tên
+                    </th>
+                    <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap">
+                      Giới tính
+                    </th>
+                    <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap">
+                      Năm sinh
+                    </th>
+                    <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap">
+                      Năm mất
+                    </th>
+                    <th className="text-foreground h-10 px-2 text-left align-middle font-medium whitespace-nowrap">
+                      Trạng thái
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="[&_tr:last-child]:border-0">
+                  {filtered.map((p) => (
+                    <tr
+                      key={p.handle}
+                      className="cursor-pointer border-b transition-colors hover:bg-accent/50"
+                      onClick={() => router.push(`/people/${p.handle}`)}
                     >
-                      {search
-                        ? "Không tìm thấy kết quả"
-                        : "Chưa có dữ liệu gia phả"}
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
+                      <td className="p-2 align-middle whitespace-nowrap font-medium">
+                        {p.displayName}
+                        {p.isPrivacyFiltered && (
+                          <span className="ml-1 text-amber-500">🔒</span>
+                        )}
+                      </td>
+                      <td className="p-2 align-middle whitespace-nowrap">
+                        <Badge variant="outline">
+                          {p.gender === 1 ? "Nam" : p.gender === 2 ? "Nữ" : "?"}
+                        </Badge>
+                      </td>
+                      <td className="p-2 align-middle whitespace-nowrap">
+                        {p.birthYear || "—"}
+                      </td>
+                      <td className="p-2 align-middle whitespace-nowrap">
+                        {p.deathYear || (p.isLiving ? "—" : "?")}
+                      </td>
+                      <td className="p-2 align-middle whitespace-nowrap">
+                        <Badge variant={p.isLiving ? "default" : "secondary"}>
+                          {p.isLiving ? "Còn sống" : "Đã mất"}
+                        </Badge>
+                      </td>
+                    </tr>
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr className="border-b transition-colors">
+                      <td
+                        colSpan={5}
+                        className="p-2 align-middle whitespace-nowrap text-center text-muted-foreground py-8"
+                      >
+                        {search
+                          ? "Không tìm thấy kết quả"
+                          : "Chưa có dữ liệu gia phả"}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>

@@ -485,183 +485,185 @@ export function ErrorLogsManager() {
           <CardTitle>Danh sách lỗi</CardTitle>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>
-                  <input
-                    type="checkbox"
-                    checked={
-                      filteredErrors.length > 0 &&
-                      filteredErrors.every((error) =>
-                        selectedIds.includes(error.id),
-                      )
-                    }
-                    onChange={(event) => {
-                      if (event.target.checked) {
-                        selectAll();
-                      } else {
-                        deselectAll();
-                      }
-                    }}
-                  />
-                </TableHead>
-                <TableHead>Thời gian</TableHead>
-                <TableHead>Loại</TableHead>
-                <TableHead>Mức độ</TableHead>
-                <TableHead>Trạng thái</TableHead>
-                <TableHead>Lỗi</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredErrors.map((error) => (
-                <TableRow key={error.id}>
-                  <TableCell>
+          <div className="max-h-[500px] overflow-y-auto rounded-md border relative">
+            <table className="w-full border-collapse m-0">
+              <thead className="sticky top-0 bg-background z-[100] m-0 p-0">
+                <tr className="m-0 border-b">
+                  <th className="text-left p-2 font-medium m-0">
                     <input
                       type="checkbox"
-                      checked={selectedIds.includes(error.id)}
-                      onChange={() => toggledSelection(error.id)}
-                    />
-                  </TableCell>
-                  <TableCell>
-                    {new Date(error.created_at).toLocaleString("vi-VN")}
-                  </TableCell>
-                  <TableCell>
-                    <Badge variant="outline">{error.error_type}</Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={`${getSeverityColor(error.severity)} text-white`}
-                    >
-                      {error.severity}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      className={`${getStatusColor(error.status)} text-white`}
-                    >
-                      {error.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="max-w-[300px] truncate">
-                    {error.error_message}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex gap-2">
-                      <Dialog>
-                        <DialogTrigger asChild>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setSelectedError(error)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </DialogTrigger>
-                        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-                          <DialogHeader>
-                            <DialogTitle>Chi tiết lỗi</DialogTitle>
-                          </DialogHeader>
-                          {selectedError && (
-                            <div className="space-y-4">
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <label className="font-semibold">ID:</label>
-                                  <p className="text-sm text-gray-600">
-                                    {selectedError.id}
-                                  </p>
-                                </div>
-                                <div>
-                                  <label className="font-semibold">
-                                    User ID:
-                                  </label>
-                                  <p className="text-sm text-gray-600">
-                                    {selectedError.user_id || "N/A"}
-                                  </p>
-                                </div>
-                                <div>
-                                  <label className="font-semibold">
-                                    Session ID:
-                                  </label>
-                                  <p className="text-sm text-gray-600">
-                                    {selectedError.session_id}
-                                  </p>
-                                </div>
-                                <div>
-                                  <label className="font-semibold">
-                                    IP Address:
-                                  </label>
-                                  <p className="text-sm text-gray-600">
-                                    {selectedError.ip_address}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div>
-                                <label className="font-semibold">
-                                  Error Message:
-                                </label>
-                                <p className="text-sm bg-red-50 p-2 rounded mt-1">
-                                  {selectedError.error_message}
-                                </p>
-                              </div>
-
-                              {selectedError.error_stack && (
-                                <div>
-                                  <label className="font-semibold">
-                                    Stack Trace:
-                                  </label>
-                                  <pre className="text-xs bg-gray-100 p-2 rounded mt-1 overflow-x-auto">
-                                    {selectedError.error_stack}
-                                  </pre>
-                                </div>
-                              )}
-
-                              <div>
-                                <label className="font-semibold">URL:</label>
-                                <p className="text-sm text-gray-600">
-                                  {selectedError.url || "N/A"}
-                                </p>
-                              </div>
-
-                              <div>
-                                <label className="font-semibold">
-                                  User Agent:
-                                </label>
-                                <p className="text-sm text-gray-600">
-                                  {selectedError.user_agent || "N/A"}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-                        </DialogContent>
-                      </Dialog>
-
-                      <Select
-                        value={error.status}
-                        onValueChange={(value) =>
-                          updateErrorStatus(error.id, value)
+                      checked={
+                        filteredErrors.length > 0 &&
+                        filteredErrors.every((error) =>
+                          selectedIds.includes(error.id),
+                        )
+                      }
+                      onChange={(event) => {
+                        if (event.target.checked) {
+                          selectAll();
+                        } else {
+                          deselectAll();
                         }
+                      }}
+                    />
+                  </th>
+                  <th className="text-left p-2 font-medium m-0">Thời gian</th>
+                  <th className="text-left p-2 font-medium m-0">Loại</th>
+                  <th className="text-left p-2 font-medium m-0">Mức độ</th>
+                  <th className="text-left p-2 font-medium m-0">Trạng thái</th>
+                  <th className="text-left p-2 font-medium m-0">Lỗi</th>
+                  <th className="text-left p-2 font-medium m-0">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredErrors.map((error) => (
+                  <tr key={error.id} className="border-b">
+                    <td className="p-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(error.id)}
+                        onChange={() => toggledSelection(error.id)}
+                      />
+                    </td>
+                    <td className="p-2">
+                      {new Date(error.created_at).toLocaleString("vi-VN")}
+                    </td>
+                    <td className="p-2">
+                      <Badge variant="outline">{error.error_type}</Badge>
+                    </td>
+                    <td className="p-2">
+                      <Badge
+                        className={`${getSeverityColor(error.severity)} text-white`}
                       >
-                        <SelectTrigger className="w-[120px]">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="new">Mới</SelectItem>
-                          <SelectItem value="investigating">
-                            Đang xử lý
-                          </SelectItem>
-                          <SelectItem value="fixed">Đã sửa</SelectItem>
-                          <SelectItem value="ignored">Bỏ qua</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                        {error.severity}
+                      </Badge>
+                    </td>
+                    <td className="p-2">
+                      <Badge
+                        className={`${getStatusColor(error.status)} text-white`}
+                      >
+                        {error.status}
+                      </Badge>
+                    </td>
+                    <td className="p-2 max-w-[300px] truncate">
+                      {error.error_message}
+                    </td>
+                    <td className="p-2">
+                      <div className="flex gap-2">
+                        <Dialog>
+                          <DialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setSelectedError(error)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                            <DialogHeader>
+                              <DialogTitle>Chi tiết lỗi</DialogTitle>
+                            </DialogHeader>
+                            {selectedError && (
+                              <div className="space-y-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div>
+                                    <label className="font-semibold">ID:</label>
+                                    <p className="text-sm text-gray-600">
+                                      {selectedError.id}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <label className="font-semibold">
+                                      User ID:
+                                    </label>
+                                    <p className="text-sm text-gray-600">
+                                      {selectedError.user_id || "N/A"}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <label className="font-semibold">
+                                      Session ID:
+                                    </label>
+                                    <p className="text-sm text-gray-600">
+                                      {selectedError.session_id}
+                                    </p>
+                                  </div>
+                                  <div>
+                                    <label className="font-semibold">
+                                      IP Address:
+                                    </label>
+                                    <p className="text-sm text-gray-600">
+                                      {selectedError.ip_address}
+                                    </p>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="font-semibold">
+                                    Error Message:
+                                  </label>
+                                  <p className="text-sm bg-red-50 p-2 rounded mt-1">
+                                    {selectedError.error_message}
+                                  </p>
+                                </div>
+
+                                {selectedError.error_stack && (
+                                  <div>
+                                    <label className="font-semibold">
+                                      Stack Trace:
+                                    </label>
+                                    <pre className="text-xs bg-gray-100 p-2 rounded mt-1 overflow-x-auto">
+                                      {selectedError.error_stack}
+                                    </pre>
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="font-semibold">URL:</label>
+                                  <p className="text-sm text-gray-600">
+                                    {selectedError.url || "N/A"}
+                                  </p>
+                                </div>
+
+                                <div>
+                                  <label className="font-semibold">
+                                    User Agent:
+                                  </label>
+                                  <p className="text-sm text-gray-600">
+                                    {selectedError.user_agent || "N/A"}
+                                  </p>
+                                </div>
+                              </div>
+                            )}
+                          </DialogContent>
+                        </Dialog>
+
+                        <Select
+                          value={error.status}
+                          onValueChange={(value) =>
+                            updateErrorStatus(error.id, value)
+                          }
+                        >
+                          <SelectTrigger className="w-[120px]">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="new">Mới</SelectItem>
+                            <SelectItem value="investigating">
+                              Đang xử lý
+                            </SelectItem>
+                            <SelectItem value="fixed">Đã sửa</SelectItem>
+                            <SelectItem value="ignored">Bỏ qua</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </CardContent>
       </Card>
     </div>

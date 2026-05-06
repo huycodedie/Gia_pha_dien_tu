@@ -188,7 +188,6 @@ export default function AdminInvoicesPage() {
     );
 
     setSubscriptions(subscriptionsWithProfiles);
-
   }, []);
 
   const fetchPaymentOrders = useCallback(async () => {
@@ -250,7 +249,7 @@ export default function AdminInvoicesPage() {
     setLoading(false);
   }, [fetchPaymentOrders, fetchSubscriptions]);
   useEffect(() => {
-    setTotalRevenue( orderRevenue);
+    setTotalRevenue(orderRevenue);
   }, [orderRevenue]);
 
   useEffect(() => {
@@ -515,9 +514,9 @@ export default function AdminInvoicesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto relative">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-[50] shadow-sm">
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Tên người dùng</TableHead>
@@ -636,9 +635,9 @@ export default function AdminInvoicesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto relative">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-[50] shadow-sm">
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Tên người dùng</TableHead>
@@ -653,8 +652,7 @@ export default function AdminInvoicesPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredHistoryOrders.length>
-                0 ? (
+                {filteredHistoryOrders.length > 0 ? (
                   <>
                     {filteredHistoryOrders.map((order) => (
                       <TableRow key={`history-${order.id}`}>
@@ -729,23 +727,22 @@ export default function AdminInvoicesPage() {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto relative">
             <Table>
-              <TableHeader>
+              <TableHeader className="sticky top-0 bg-background z-[50] shadow-sm">
                 <TableRow>
                   <TableHead>Email</TableHead>
                   <TableHead>Tên người dùng</TableHead>
                   <TableHead>Gói nâng cấp</TableHead>
                   <TableHead>Loại</TableHead>
                   <TableHead>Giá</TableHead>
-                  <TableHead>Thời hạn</TableHead>     
-                  <TableHead>Ngày hết hạn</TableHead>         
+                  <TableHead>Thời hạn</TableHead>
+                  <TableHead>Ngày hết hạn</TableHead>
                   <TableHead>Trạng thái</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredSubscriptions.length >
-                0 ? (
+                {filteredSubscriptions.length > 0 ? (
                   <>
                     {filteredSubscriptions.map((sub) => (
                       <TableRow key={sub.id}>
@@ -776,7 +773,7 @@ export default function AdminInvoicesPage() {
                             discountPercent={sub.plan.discount_percent}
                           />
                         </TableCell>
-                        
+
                         <TableCell>{sub.plan.duration_days} ngày</TableCell>
                         <TableCell>{formatDateTime(sub.expires_at)}</TableCell>
                         <TableCell>
@@ -792,7 +789,6 @@ export default function AdminInvoicesPage() {
                                 : "Đã hủy"}
                           </Badge>
                         </TableCell>
-                 
                       </TableRow>
                     ))}
                   </>

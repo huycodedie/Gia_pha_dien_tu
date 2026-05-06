@@ -161,11 +161,7 @@ export default function AdminUsersPage() {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button
-            variant="outline"
-            size="icon"
-            onClick={() => fetchUsers()}
-          >
+          <Button variant="outline" size="icon" onClick={() => fetchUsers()}>
             <RefreshCw className="h-4 w-4" />
           </Button>
           <Dialog
@@ -242,98 +238,105 @@ export default function AdminUsersPage() {
               <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
             </div>
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Tên</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Quyền</TableHead>
-                  <TableHead>Trạng thái</TableHead>
-                  <TableHead>Ngày tham gia</TableHead>
-                  <TableHead className="w-12"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                      {user.display_name || user.email.split("@")[0]}
-                    </TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="secondary"
-                        className={ROLE_COLORS[user.role] || ""}
-                      >
-                        {user.role.toUpperCase()}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={
-                          user.status === "active" ? "default" : "destructive"
-                        }
-                      >
-                        {user.status === "active" ? "Hoạt động" : "Tạm ngưng"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(user.created_at).toLocaleDateString("vi-VN")}
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="icon">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onClick={() => handleChangeRole(user.id, "admin")}
-                          >
-                            Đặt Admin
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleChangeRole(user.id, "user")}
-                          >
-                            Đặt User
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleChangeRole(user.id, "viewer")}
-                          >
-                            Đặt Viewer
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onClick={() => handleChangeRole(user.id, "guest")}
-                          >
-                            Đặt Khách
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem
-                            className={
-                              user.status === "active"
-                                ? "text-destructive"
-                                : "text-green-600"
-                            }
-                            onClick={() =>
-                              handleToggleStatus(user.id, user.status)
-                            }
-                          >
-                            {user.status === "active"
-                              ? "Tạm ngưng"
-                              : "Kích hoạt lại"}
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <div className="max-h-[550px] overflow-y-auto rounded-md border relative">
+              <table className="w-full border-collapse m-0">
+                <thead className="sticky top-0 bg-background z-[100] m-0 p-0">
+                  <tr className="m-0 border-b">
+                    <th className="text-left p-2 font-medium m-0">Tên</th>
+                    <th className="text-left p-2 font-medium m-0">Email</th>
+                    <th className="text-left p-2 font-medium m-0">Quyền</th>
+                    <th className="text-left p-2 font-medium m-0">
+                      Trạng thái
+                    </th>
+                    <th className="text-left p-2 font-medium m-0">
+                      Ngày tham gia
+                    </th>
+                    <th className="w-12 p-2 m-0"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {users.map((user) => (
+                    <tr key={user.id} className="border-b">
+                      <td className="p-2 font-medium">
+                        {user.display_name || user.email.split("@")[0]}
+                      </td>
+                      <td className="p-2">{user.email}</td>
+                      <td className="p-2">
+                        <Badge
+                          variant="secondary"
+                          className={ROLE_COLORS[user.role] || ""}
+                        >
+                          {user.role.toUpperCase()}
+                        </Badge>
+                      </td>
+                      <td className="p-2">
+                        <Badge
+                          variant={
+                            user.status === "active" ? "default" : "destructive"
+                          }
+                        >
+                          {user.status === "active" ? "Hoạt động" : "Tạm ngưng"}
+                        </Badge>
+                      </td>
+                      <td className="p-2">
+                        {new Date(user.created_at).toLocaleDateString("vi-VN")}
+                      </td>
+                      <td className="p-2">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="icon">
+                              <MoreHorizontal className="h-4 w-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem
+                              onClick={() => handleChangeRole(user.id, "admin")}
+                            >
+                              Đặt Admin
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleChangeRole(user.id, "user")}
+                            >
+                              Đặt User
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleChangeRole(user.id, "viewer")
+                              }
+                            >
+                              Đặt Viewer
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => handleChangeRole(user.id, "guest")}
+                            >
+                              Đặt Khách
+                            </DropdownMenuItem>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              className={
+                                user.status === "active"
+                                  ? "text-destructive"
+                                  : "text-green-600"
+                              }
+                              onClick={() =>
+                                handleToggleStatus(user.id, user.status)
+                              }
+                            >
+                              {user.status === "active"
+                                ? "Tạm ngưng"
+                                : "Kích hoạt lại"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           )}
         </CardContent>
       </Card>
-
     </div>
   );
 }
