@@ -812,7 +812,7 @@ export async function uploadPersonImage(
   // Create unique filename
   const fileName = `${user.user.id}/${personHandle}_${Date.now()}_${file.name}`;
 
-  const { data, error: uploadError } = await supabase.storage
+  const { error: uploadError } = await supabase.storage
     .from("people")
     .upload(fileName, file);
 
@@ -1227,32 +1227,30 @@ export async function getMyPendingInvitations(): Promise<
 export async function removeGuest(
   guestId: string,
 ): Promise<{ error: string | null }> {
-  const { data: user } = await supabase.auth.getUser();
-  if (!user.user) return { error: "Not authenticated" };
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
 
-  // Verify the guest belongs to this user
-  const { data: guest, error: guestError } = await supabase
-    .from("profiles")
-    .select("guest_of")
-    .eq("id", guestId)
-    .eq("role", "guest")
-    .single();
+  if (!token) return { error: "Not authenticated" };
 
-  if (guestError || !guest || guest.guest_of !== user.user.id) {
-    return { error: "Không có quyền xóa tài khoản này" };
+  const response = await fetch(`/api/guests/${guestId}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  const result = await response.json().catch(() => ({
+    error: "Không thể xóa tài khoản khách",
+  }));
+
+  if (!response.ok) {
+    return {
+      error: result.error || "Không thể xóa tài khoản khách",
+    };
   }
 
-  // Delete the guest profile (this will cascade delete the auth user due to foreign key)
-  const { error } = await supabase.from("profiles").delete().eq("id", guestId);
-
-  if (error) {
-    console.error("Failed to remove guest:", error.message);
-    return { error: error.message };
-  }
-
-  return { error: null };
+  return { error: result.error ?? null };
 }
-
 // ═══ KINSHIP & GENEALOGICAL FUNCTIONS ═══
 
 /** Get kinship relationship between two people */

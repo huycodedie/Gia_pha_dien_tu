@@ -1,10 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Users, Plus, Copy, Trash2, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/components/auth-provider";
 import {
   createGuestInvitation,
@@ -13,7 +21,6 @@ import {
   getMyPendingInvitations,
 } from "@/lib/supabase-data";
 import { toast } from "sonner";
-import { GuestAccountsList } from "@/components/guest-accounts-list";
 
 interface Guest {
   id: string;
@@ -40,20 +47,23 @@ export default function GuestsPage() {
   >([]);
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
+  const [guestToDelete, setGuestToDelete] = useState<Guest | null>(null);
+  const [deletingGuestId, setDeletingGuestId] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (user) {
-      fetchGuests();
-    }
-  }, [user]);
-
-  const fetchGuests = async () => {
+  const fetchGuests = useCallback(async () => {
     const guestList = await getMyGuests();
     const pendingList = await getMyPendingInvitations();
     setGuests(guestList);
     setPendingInvitations(pendingList);
     setLoading(false);
-  };
+  }, []);
+
+  useEffect(() => {
+    if (user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      fetchGuests();
+    }
+  }, [user, fetchGuests]);
 
   const copyTextToClipboard = async (text: string) => {
     if (
@@ -112,18 +122,21 @@ export default function GuestsPage() {
     setCreating(false);
   };
 
-  const handleRemoveGuest = async (guestId: string, guestName: string) => {
-    if (!confirm(`Bạn có chắc muốn xóa tài khoản khách "${guestName}"?`)) {
+  const handleRemoveGuest = async () => {
+    if (!guestToDelete) {
       return;
     }
 
-    const { error } = await removeGuest(guestId);
+    setDeletingGuestId(guestToDelete.id);
+    const { error } = await removeGuest(guestToDelete.id);
     if (error) {
       toast.error("Không thể xóa tài khoản: " + error);
     } else {
-      toast.success("Đã xóa tài khoản khách");
+      toast.success("Đã xóa tài khoản thành công");
+      setGuestToDelete(null);
       fetchGuests();
     }
+    setDeletingGuestId(null);
   };
 
   const copyInvitationLink = async (code: string) => {
@@ -285,9 +298,7 @@ export default function GuestsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() =>
-                        handleRemoveGuest(guest.id, guest.display_name)
-                      }
+                      onClick={() => setGuestToDelete(guest)}
                       className="text-red-600 hover:text-red-700"
                     >
                       <Trash2 className="w-4 h-4" />
@@ -318,6 +329,42 @@ export default function GuestsPage() {
       {/* <div className="mt-8">
         <GuestAccountsList />
       </div> */}
+
+      <Dialog
+        open={!!guestToDelete}
+        onOpenChange={(open) => {
+          if (!open && !deletingGuestId) {
+            setGuestToDelete(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Xóa tài khoản khách?</DialogTitle>
+            <DialogDescription>
+              Tài khoản <strong>{guestToDelete?.display_name}</strong> sẽ bị
+              xóa khỏi hệ thống và không thể đăng nhập lại. Thao tác này không
+              thể hoàn tác.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setGuestToDelete(null)}
+              disabled={!!deletingGuestId}
+            >
+              Hủy
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleRemoveGuest}
+              disabled={!!deletingGuestId}
+            >
+              {deletingGuestId ? "Đang xóa..." : "Xóa tài khoản"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
