@@ -31,7 +31,7 @@ const adminItems = [
   { href: "/admin/users", label: "Quản lý Users", icon: Shield },
   { href: "/admin/errors", label: "Quản lý Lỗi", icon: AlertTriangle },
   // { href: "/admin/edits", label: "Kiểm duyệt", icon: ClipboardCheck },
-  { href: "/admin/plans", label: "Thanh toán", icon: CreditCard },
+  { href: "/admin/plans", label: "Thanh toán & gói", icon: CreditCard },
   { href: "/admin/invoices", label: "Hóa đơn", icon: Receipt },
   // { href: "/admin/audit", label: "Audit Log", icon: Receipt },
   { href: "/admin/backup", label: "Backup", icon: Database },
