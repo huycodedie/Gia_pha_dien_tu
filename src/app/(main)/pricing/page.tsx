@@ -355,13 +355,13 @@ export default function PricingPage() {
 
     switch (profile.role) {
       case "admin":
-        return "Admin";
+        return "Quản trị";
       case "user":
-        return "Người dùng (Premium)";
+        return "Thành Viên";
       case "viewer":
         return "Người xem";
       case "guest":
-        return "Khách";
+        return "Khách ";
       default:
         return profile.role || "Không xác định";
     }
